@@ -4,6 +4,16 @@ import Button from '@mui/material/Button';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
 import { styled, keyframes } from '@mui/material/styles';
+import AppBar from '@mui/material/AppBar';
+import Toolbar from '@mui/material/Toolbar';
+import IconButton from '@mui/material/IconButton';
+import MenuIcon from '@mui/icons-material/Menu';
+import Drawer from '@mui/material/Drawer';
+import List from '@mui/material/List';
+import ListItem from '@mui/material/ListItem';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
+import Divider from '@mui/material/Divider';
 
 // Animations
 const float = keyframes`
@@ -225,17 +235,6 @@ const PulsatingDot = styled(Box)(({ theme, active = false }) => ({
   },
 }));
 
-// const StickerPack = styled(Box)(({ theme }) => ({
-//   position: 'absolute',
-//   animation: `${rotate} 20s linear infinite`,
-//   cursor: 'pointer',
-//   transition: 'transform 0.3s ease',
-//   '&:hover': {
-//     animation: 'none',
-//     transform: 'scale(1.2)',
-//   },
-// }));
-
 const floatingStickers = [
   { emoji: '🎉', top: '10%', left: '5%', delay: 0 },
   { emoji: '✨', top: '20%', right: '10%', delay: 1 },
@@ -275,6 +274,19 @@ const IntersectionObserver = ({ children }) => {
 
 const Frontpage = () => {
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const handleDrawerToggle = () => {
+    setMobileOpen(!mobileOpen);
+  };
+
+  const navItems = [
+    { name: 'Home', link: '#home' },
+    { name: 'Features', link: '#features' },
+    { name: 'Testimonials', link: '#testimonials' },
+    { name: 'About', link: '#about' },
+    { name: 'Contact', link: '#contact' },
+  ];
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -283,6 +295,28 @@ const Frontpage = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const drawer = (
+    <Box onClick={handleDrawerToggle} sx={{ textAlign: 'center', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', height: '100%' }}>
+      <Typography variant="h6" sx={{ my: 2, color: 'white' }}>
+        Ondeal ChatApp
+      </Typography>
+      <Divider sx={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />
+      <List>
+        {navItems.map((item) => (
+          <ListItem key={item.name} disablePadding>
+            <ListItemButton sx={{ textAlign: 'center' }} href={item.link}>
+              <ListItemText primary={item.name} primaryTypographyProps={{ color: 'white' }} />
+            </ListItemButton>
+          </ListItem>
+        ))}
+      </List>
+      <Box sx={{ display: 'flex', justifyContent: 'center', gap: '1rem', mt: 2 }}>
+        <TextChatButton size="small">Login</TextChatButton>
+        <VideoChatButton size="small">Sign Up</VideoChatButton>
+      </Box>
+    </Box>
+  );
+
   return (
     <div style={{ 
       background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #1a1a2e 100%)', 
@@ -290,6 +324,88 @@ const Frontpage = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
+      {/* Navbar */}
+      <AppBar 
+        position="fixed" 
+        sx={{ 
+          background: 'rgba(26, 26, 46, 0.8)', 
+          backdropFilter: 'blur(10px)',
+          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
+          zIndex: 1100
+        }}
+      >
+        <Container maxWidth="xl">
+          <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography
+              variant="h6"
+              component="div"
+              sx={{ 
+                flexGrow: 1,
+                fontWeight: 'bold',
+                background: 'linear-gradient(45deg, #667eea, #764ba2)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                fontSize: '1.5rem'
+              }}
+            >
+              ChitChat
+            </Typography>
+            
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: '2rem' }}>
+              {navItems.map((item) => (
+                <Button 
+                  key={item.name} 
+                  href={item.link} 
+                  sx={{ 
+                    color: 'white', 
+                    fontWeight: 500,
+                    '&:hover': {
+                      background: 'rgba(255, 255, 255, 0.1)'
+                    }
+                  }}
+                >
+                  {item.name}
+                </Button>
+              ))}
+              <Box sx={{ display: 'flex', gap: '1rem', ml: 2 }}>
+                <TextChatButton size="small">Login</TextChatButton>
+                <VideoChatButton size="small">Sign Up</VideoChatButton>
+              </Box>
+            </Box>
+            
+            <IconButton
+              color="inherit"
+              aria-label="open drawer"
+              edge="start"
+              onClick={handleDrawerToggle}
+              sx={{ display: { md: 'none' } }}
+            >
+              <MenuIcon />
+            </IconButton>
+          </Toolbar>
+        </Container>
+      </AppBar>
+      
+      {/* Mobile drawer */}
+      <Drawer
+        variant="temporary"
+        open={mobileOpen}
+        onClose={handleDrawerToggle}
+        ModalProps={{
+          keepMounted: true, // Better open performance on mobile.
+        }}
+        sx={{
+          display: { xs: 'block', md: 'none' },
+          '& .MuiDrawer-paper': { 
+            boxSizing: 'border-box', 
+            width: 240,
+            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+          },
+        }}
+      >
+        {drawer}
+      </Drawer>
+
       {/* Background decorative elements */}
       <GlowingOrb style={{ top: '10%', left: '10%' }} color="#667eea" />
       <GlowingOrb style={{ top: '60%', right: '10%' }} color="#764ba2" />
@@ -310,7 +426,9 @@ const Frontpage = () => {
         </FloatingEmoji>
       ))}
       
-      <StyledContainer maxWidth="xl">
+      <StyledContainer maxWidth="xl" id="home">
+        <Box sx={{ height: '64px' }} /> {/* Spacer for fixed navbar */}
+        
         <ContentWrapper>
           <LeftContent>
             <Typography 
@@ -603,7 +721,8 @@ const Frontpage = () => {
           <Box sx={{ 
             textAlign: 'center', 
             marginTop: '8rem',
-            marginBottom: '6rem' 
+            marginBottom: '6rem',
+            id: 'features'
           }}>
             <Typography 
               variant="h2" 
@@ -810,7 +929,8 @@ const Frontpage = () => {
           <Box sx={{ 
             textAlign: 'center', 
             marginTop: '8rem',
-            marginBottom: '4rem' 
+            marginBottom: '4rem',
+            id: 'testimonials'
           }}>
             <Typography 
               variant="h2" 
@@ -1190,7 +1310,8 @@ const Frontpage = () => {
             borderTop: '1px solid rgba(255, 255, 255, 0.1)',
             paddingTop: '4rem',
             marginTop: '6rem',
-            textAlign: 'center'
+            textAlign: 'center',
+            id: 'contact'
           }}>
             <Box sx={{
               display: 'flex',
