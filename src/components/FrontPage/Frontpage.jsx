@@ -84,21 +84,14 @@ const VideoMockup = styled(Box)(({ theme }) => ({
   position: 'relative',
   width: '100%',
   maxWidth: '600px',
-}));
-
-const VideoCard = styled(Box)(({ theme }) => ({
+  height: '400px',
   background: 'rgba(255, 255, 255, 0.1)',
   borderRadius: '16px',
-  padding: '1rem',
-  backdropFilter: 'blur(15px)',
   border: '1px solid rgba(255, 255, 255, 0.2)',
-  marginBottom: '1rem',
-  transition: 'all 0.3s ease',
-  '&:hover': {
-    transform: 'translateY(-5px)',
-    boxShadow: '0 20px 40px rgba(102, 126, 234, 0.3)',
-    border: '1px solid rgba(102, 126, 234, 0.4)',
-  },
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  overflow: 'hidden',
 }));
 
 const ActionButton = styled(Button)(({ theme }) => ({
@@ -232,18 +225,17 @@ const PulsatingDot = styled(Box)(({ theme, active = false }) => ({
   },
 }));
 
-const StickerPack = styled(Box)(({ theme }) => ({
-  position: 'absolute',
-  animation: `${rotate} 20s linear infinite`,
-  cursor: 'pointer',
-  transition: 'transform 0.3s ease',
-  '&:hover': {
-    animation: 'none',
-    transform: 'scale(1.2)',
-  },
-}));
+// const StickerPack = styled(Box)(({ theme }) => ({
+//   position: 'absolute',
+//   animation: `${rotate} 20s linear infinite`,
+//   cursor: 'pointer',
+//   transition: 'transform 0.3s ease',
+//   '&:hover': {
+//     animation: 'none',
+//     transform: 'scale(1.2)',
+//   },
+// }));
 
-// Floating stickers data
 const floatingStickers = [
   { emoji: '🎉', top: '10%', left: '5%', delay: 0 },
   { emoji: '✨', top: '20%', right: '10%', delay: 1 },
@@ -371,134 +363,9 @@ const Frontpage = () => {
           
           <RightContent>
             <VideoMockup>
-              {/* Main video chat interface mockup */}
-              <VideoCard sx={{ position: 'relative' }}>
-                <Box sx={{ 
-                  background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                  height: '200px',
-                  borderRadius: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '1rem',
-                  position: 'relative',
-                  overflow: 'hidden',
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'linear-gradient(45deg, rgba(255,255,255,0.1) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.1) 75%)',
-                    backgroundSize: '20px 20px',
-                    animation: `${slideInRight} 10s linear infinite`,
-                  }
-                }}>
-                  <Typography variant="h6" color="white" sx={{ zIndex: 1, fontWeight: 600 }}>
-                    Video Chat Preview
-                  </Typography>
-                </Box>
-                
-                {/* Enhanced user info overlay */}
-                <Box sx={{ 
-                  position: 'absolute', 
-                  bottom: '20px', 
-                  left: '20px',
-                  background: 'rgba(0, 0, 0, 0.8)',
-                  borderRadius: '25px',
-                  padding: '10px 18px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  transition: 'transform 0.3s ease',
-                  '&:hover': {
-                    transform: 'scale(1.05)',
-                  }
-                }}>
-                  <Box sx={{ 
-                    width: '32px', 
-                    height: '32px', 
-                    borderRadius: '50%', 
-                    background: 'linear-gradient(45deg, #4CAF50, #45a049)',
-                    position: 'relative',
-                    '&::after': {
-                      content: '""',
-                      position: 'absolute',
-                      top: '2px',
-                      right: '2px',
-                      width: '8px',
-                      height: '8px',
-                      borderRadius: '50%',
-                      background: '#fff',
-                      animation: `${pulse} 2s infinite`,
-                    }
-                  }} />
-                  <Typography variant="body2" color="white" sx={{ fontWeight: 500 }}>Jon Snow</Typography>
-                </Box>
-              </VideoCard>
-              
-              {/* Enhanced notification mockup */}
-              <Box sx={{ 
-                position: 'absolute', 
-                top: '10px', 
-                right: '10px',
-                background: 'rgba(255, 255, 255, 0.95)',
-                borderRadius: '16px',
-                padding: '12px 16px',
-                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-                backdropFilter: 'blur(10px)',
-                animation: `${bounce} 2s ease 2s infinite`,
-                cursor: 'pointer',
-                transition: 'transform 0.3s ease',
-                '&:hover': {
-                  transform: 'scale(1.05)',
-                }
-              }}>
-                <Typography variant="body2" color="black" sx={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
-                  fontWeight: 500 
-                }}>
-                  🔔 New Notification
-                </Typography>
-              </Box>
-              
-              {/* Enhanced sticker pack */}
-              <StickerPack style={{ top: '50px', right: '-30px' }}>
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
-                  gap: '8px',
-                  padding: '12px',
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '16px',
-                  backdropFilter: 'blur(10px)',
-                }}>
-                  {['😂', '❤️', '😍', '👍'].map((emoji, index) => (
-                    <Box key={index} sx={{
-                      width: '32px',
-                      height: '32px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '1.2rem',
-                      background: 'rgba(255, 255, 255, 0.2)',
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      transition: 'transform 0.2s ease',
-                      '&:hover': {
-                        transform: 'scale(1.2)',
-                      }
-                    }}>
-                      {emoji}
-                    </Box>
-                  ))}
-                </Box>
-              </StickerPack>
+              <Typography variant="body1" color="rgba(255,255,255,0.7)">
+                Video Chat Preview
+              </Typography>
             </VideoMockup>
           </RightContent>
         </ContentWrapper>
@@ -878,147 +745,11 @@ const Frontpage = () => {
               alignItems: 'center',
               minHeight: '400px'
             }}>
-              <Box sx={{ position: 'relative' }}>
-                {/* Enhanced video windows */}
-                <Box sx={{
-                  width: '220px',
-                  height: '160px',
-                  background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                  borderRadius: '20px',
-                  border: '3px solid #667eea',
-                  position: 'relative',
-                  zIndex: 2,
-                  overflow: 'hidden',
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.2) 0%, transparent 50%)',
-                  }
-                }}>
-                  <Box sx={{ 
-                    position: 'absolute', 
-                    top: '50%', 
-                    left: '50%', 
-                    transform: 'translate(-50%, -50%)',
-                    fontSize: '4rem',
-                    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))'
-                  }}>🙂</Box>
-                  
-                  {/* Video controls overlay */}
-                  <Box sx={{
-                    position: 'absolute',
-                    bottom: '10px',
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    display: 'flex',
-                    gap: '8px'
-                  }}>
-                    {['🎤', '📹', '⚙️'].map((icon, index) => (
-                      <Box key={index} sx={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        background: 'rgba(0,0,0,0.6)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '0.9rem',
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s ease',
-                        '&:hover': {
-                          transform: 'scale(1.1)',
-                        }
-                      }}>
-                        {icon}
-                      </Box>
-                    ))}
-                  </Box>
-                </Box>
-                
-                <Box sx={{
-                  width: '220px',
-                  height: '160px',
-                  background: 'linear-gradient(45deg, #4ECDC4 30%, #44A08D 90%)',
-                  borderRadius: '20px',
-                  border: '3px solid #4ECDC4',
-                  position: 'absolute',
-                  top: '60px',
-                  left: '140px',
-                  zIndex: 1,
-                  overflow: 'hidden',
-                  '&::before': {
-                    content: '""',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    background: 'radial-gradient(circle at 70% 30%, rgba(255,255,255,0.2) 0%, transparent 50%)',
-                  }
-                }}>
-                  <Box sx={{ 
-                    position: 'absolute', 
-                    top: '50%', 
-                    left: '50%', 
-                    transform: 'translate(-50%, -50%)',
-                    fontSize: '4rem',
-                    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))'
-                  }}>😊</Box>
-                </Box>
-                
-                {/* Enhanced floating reactions */}
-                {[
-                  { emoji: '🔥', top: '-30px', left: '100px', delay: 0 },
-                  { emoji: '😊', top: '20px', right: '-50px', delay: 1 },
-                  { emoji: '✈️', bottom: '140px', left: '-40px', delay: 2 },
-                  { emoji: '😮', bottom: '40px', right: '30px', delay: 0.5 },
-                  { emoji: '😱', bottom: '-20px', left: '70px', delay: 1.5 },
-                  { emoji: '✅', top: '100px', left: '-30px', delay: 2.5 }
-                ].map((reaction, index) => (
-                  <FloatingEmoji
-                    key={index}
-                    style={{ 
-                      ...reaction,
-                      fontSize: '2.5rem',
-                      zIndex: 3
-                    }}
-                    delay={reaction.delay}
-                  >
-                    {reaction.emoji}
-                  </FloatingEmoji>
-                ))}
-
-                {/* Connection status indicator */}
-                <Box sx={{
-                  position: 'absolute',
-                  top: '-10px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  background: 'rgba(76, 175, 80, 0.9)',
-                  color: 'white',
-                  padding: '4px 12px',
-                  borderRadius: '12px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  zIndex: 4
-                }}>
-                  <Box sx={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    background: '#fff',
-                    animation: `${pulse} 1s infinite`
-                  }} />
-                  Connected
-                </Box>
-              </Box>
+              <VideoMockup>
+                <Typography variant="body1" color="rgba(255,255,255,0.7)">
+                  Video Chat Interface
+                </Typography>
+              </VideoMockup>
             </Box>
 
             <Box sx={{ 
@@ -1197,7 +928,7 @@ const Frontpage = () => {
                         filter: 'blur(4px)',
                       }
                     }}>
-                      👤
+                      {testimonial.name.charAt(0)}
                     </Box>
                     <Box>
                       <Typography variant="body2" color="white" sx={{ fontWeight: 600 }}>
@@ -1300,144 +1031,11 @@ const Frontpage = () => {
               alignItems: 'center',
               minHeight: '400px'
             }}>
-              {/* Enhanced central friendship hub */}
-              <Box sx={{
-                width: '140px',
-                height: '140px',
-                borderRadius: '50%',
-                background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '4rem',
-                position: 'relative',
-                zIndex: 2,
-                boxShadow: '0 20px 40px rgba(102, 126, 234, 0.4)',
-                '&::before': {
-                  content: '""',
-                  position: 'absolute',
-                  top: '-10px',
-                  left: '-10px',
-                  right: '-10px',
-                  bottom: '-10px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(45deg, #667eea, #764ba2)',
-                  opacity: 0.3,
-                  filter: 'blur(20px)',
-                  zIndex: -1,
-                  animation: `${pulse} 3s infinite`,
-                }
-              }}>
-                🤝
-              </Box>
-
-              {/* Enhanced chat interface */}
-              <Box sx={{
-                position: 'absolute',
-                top: '30px',
-                right: '30px',
-                background: 'rgba(255, 255, 255, 0.1)',
-                borderRadius: '20px',
-                padding: '1.5rem',
-                backdropFilter: 'blur(15px)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                minWidth: '280px',
-                zIndex: 3,
-                transition: 'transform 0.3s ease',
-                '&:hover': {
-                  transform: 'translateY(-5px)',
-                  boxShadow: '0 15px 35px rgba(0, 0, 0, 0.2)',
-                }
-              }}>
-                <Typography variant="body2" color="white" sx={{ 
-                  marginBottom: '1rem', 
-                  fontWeight: 700,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  💬 DIRECT MESSAGES
-                  <Box sx={{
-                    background: '#ff4757',
-                    color: 'white',
-                    borderRadius: '50%',
-                    width: '20px',
-                    height: '20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '10px',
-                    fontWeight: 'bold',
-                    animation: `${pulse} 2s infinite`
-                  }}>5</Box>
+              <VideoMockup>
+                <Typography variant="body1" color="rgba(255,255,255,0.7)">
+                  Friends Connection Interface
                 </Typography>
-                
-                {[
-                  { name: 'Wisecrack', status: 'online', hasMessage: true },
-                  { name: 'Snarky', status: 'online', hasMessage: false },
-                  { name: 'SassMaster', status: 'away', hasMessage: false },
-                  { name: 'Chuckles', status: 'online', hasMessage: false },
-                  { name: 'Egghead', status: 'offline', hasMessage: false }
-                ].map((user, index) => (
-                  <Box key={user.name} sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '10px',
-                    padding: '8px 0',
-                    borderBottom: index < 4 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
-                    cursor: 'pointer',
-                    borderRadius: '8px',
-                    transition: 'background 0.2s ease',
-                    '&:hover': {
-                      background: 'rgba(255, 255, 255, 0.05)',
-                    }
-                  }}>
-                    <Box sx={{ 
-                      width: '10px', 
-                      height: '10px', 
-                      borderRadius: '50%', 
-                      background: user.status === 'online' ? '#4CAF50' : user.status === 'away' ? '#FFA726' : '#757575',
-                      animation: user.status === 'online' ? `${pulse} 2s infinite` : 'none'
-                    }} />
-                    <Typography variant="caption" color="rgba(255, 255, 255, 0.8)" sx={{ flex: 1 }}>
-                      {user.name}
-                    </Typography>
-                    {user.hasMessage && (
-                      <Box sx={{ 
-                        background: '#ff4757', 
-                        borderRadius: '50%', 
-                        width: '16px', 
-                        height: '16px', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
-                        fontSize: '10px',
-                        color: 'white',
-                        fontWeight: 'bold'
-                      }}>4</Box>
-                    )}
-                  </Box>
-                ))}
-              </Box>
-
-              {/* Enhanced floating decorations */}
-              {[
-                { emoji: '💙', top: '0px', left: '20px', delay: 0 },
-                { emoji: '🎉', bottom: '120px', left: '-40px', delay: 1 },
-                { emoji: '🌟', bottom: '0px', left: '40px', delay: 2 },
-                { emoji: '✨', top: '40px', right: '150px', delay: 0.5 }
-              ].map((item, index) => (
-                <FloatingEmoji
-                  key={index}
-                  style={{ 
-                    ...item,
-                    fontSize: '2.5rem'
-                  }}
-                  delay={item.delay}
-                >
-                  {item.emoji}
-                </FloatingEmoji>
-              ))}
+              </VideoMockup>
             </Box>
           </Box>
         </IntersectionObserver>
