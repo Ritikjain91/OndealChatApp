@@ -14,12 +14,15 @@ import ListItem from '@mui/material/ListItem';
 import ListItemButton from '@mui/material/ListItemButton';
 import ListItemText from '@mui/material/ListItemText';
 import Divider from '@mui/material/Divider';
+import { useNavigate } from 'react-router';
+
 
 // Animations
 const float = keyframes`
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }
 `;
+
 
 const pulse = keyframes`
   0%, 100% { transform: scale(1); }
@@ -244,6 +247,7 @@ const floatingStickers = [
   { emoji: '🚀', top: '70%', right: '5%', delay: 2.5 },
 ];
 
+
 const IntersectionObserver = ({ children }) => {
   const [isVisible, setIsVisible] = useState(false);
   const ref = React.useRef();
@@ -279,6 +283,12 @@ const Frontpage = () => {
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
+    const navigate = useNavigate(); // Correct way to get the navigate function
+
+  const Chatwithhoutlogin = () => {
+    navigate('/chat'); // Correct way to navigate
+  };
+
 
   const navItems = [
     { name: 'Home', link: '#home' },
@@ -348,7 +358,7 @@ const Frontpage = () => {
                 fontSize: '1.5rem'
               }}
             >
-              ChitChat
+              Ondeal ChatApp
             </Typography>
             
             <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: '2rem' }}>
@@ -392,7 +402,7 @@ const Frontpage = () => {
         open={mobileOpen}
         onClose={handleDrawerToggle}
         ModalProps={{
-          keepMounted: true, // Better open performance on mobile.
+          keepMounted: true,
         }}
         sx={{
           display: { xs: 'block', md: 'none' },
@@ -470,7 +480,7 @@ const Frontpage = () => {
               gap: '1rem',
               animation: `${fadeInUp} 1s ease-out 0.9s both`,
             }}>
-              <TextChatButton startIcon={<span>💬</span>}>
+              <TextChatButton onClick={Chatwithhoutlogin} startIcon={<span>💬</span>}>
                 Chat Without Login 
               </TextChatButton>
               <VideoChatButton startIcon={<span>📹</span>}>
