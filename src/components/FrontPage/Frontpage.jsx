@@ -289,6 +289,10 @@ const Frontpage = () => {
     navigate('/chat'); // Correct way to navigate
   };
 
+  const loginButton =()=>{
+    navigate('/login'); // Correct way to navigate
+
+  }
 
   const navItems = [
     { name: 'Home', link: '#home' },
@@ -321,7 +325,7 @@ const Frontpage = () => {
         ))}
       </List>
       <Box sx={{ display: 'flex', justifyContent: 'center', gap: '1rem', mt: 2 }}>
-        <TextChatButton size="small">Login</TextChatButton>
+        <TextChatButton  size="small">Login</TextChatButton>
         <VideoChatButton size="small">Sign Up</VideoChatButton>
       </Box>
     </Box>
@@ -378,8 +382,13 @@ const Frontpage = () => {
                 </Button>
               ))}
               <Box sx={{ display: 'flex', gap: '1rem', ml: 2 }}>
-                <TextChatButton size="small">Login</TextChatButton>
-                <VideoChatButton size="small">Sign Up</VideoChatButton>
+                <TextChatButton onClick={loginButton}  size="small">Login</TextChatButton>
+            <VideoChatButton 
+  onClick={() => navigate('/signup')}
+  size="small"
+>
+  Sign Up
+</VideoChatButton>
               </Box>
             </Box>
             
