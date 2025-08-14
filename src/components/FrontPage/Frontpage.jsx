@@ -1,256 +1,34 @@
-import React, { useState, useEffect } from 'react';
-import Typography from '@mui/material/Typography';
-import Button from '@mui/material/Button';
-import Box from '@mui/material/Box';
-import Container from '@mui/material/Container';
-import { styled, keyframes } from '@mui/material/styles';
-import AppBar from '@mui/material/AppBar';
-import Toolbar from '@mui/material/Toolbar';
-import IconButton from '@mui/material/IconButton';
-import MenuIcon from '@mui/icons-material/Menu';
-import Drawer from '@mui/material/Drawer';
-import List from '@mui/material/List';
-import ListItem from '@mui/material/ListItem';
-import ListItemButton from '@mui/material/ListItemButton';
-import ListItemText from '@mui/material/ListItemText';
-import Divider from '@mui/material/Divider';
-import { useNavigate } from 'react-router';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Menu, X, MessageCircle, Video, Users, Shield, Star, Globe } from 'lucide-react';
 
+// Animation keyframes using Tailwind's animate classes
+const FloatingEmoji = ({ emoji, className, delay = 0 }) => {
+  return (
+    <div 
+      className={`absolute text-2xl cursor-pointer transition-transform hover:scale-125 ${className}`}
+      style={{ 
+        animationDelay: `${delay}s`,
+        animation: 'float 3s ease-in-out infinite'
+      }}
+    >
+      {emoji}
+    </div>
+  );
+};
 
-// Animations
-const float = keyframes`
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-`;
+const GlowingOrb = ({ className, color = 'bg-blue-500' }) => {
+  return (
+    <div 
+      className={`absolute w-48 h-48 rounded-full opacity-20 blur-3xl animate-pulse ${color} ${className}`}
+      style={{ animation: 'pulse 4s ease-in-out infinite' }}
+    />
+  );
+};
 
-
-const pulse = keyframes`
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-`;
-
-const fadeInUp = keyframes`
-  from { opacity: 0; transform: translateY(30px); }
-  to { opacity: 1; transform: translateY(0); }
-`;
-
-const slideInLeft = keyframes`
-  from { opacity: 0; transform: translateX(-50px); }
-  to { opacity: 1; transform: translateX(0); }
-`;
-
-const slideInRight = keyframes`
-  from { opacity: 0; transform: translateX(50px); }
-  to { opacity: 1; transform: translateX(0); }
-`;
-
-const rotate = keyframes`
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-`;
-
-const bounce = keyframes`
-  0%, 20%, 53%, 80%, 100% { transform: translateY(0); }
-  40%, 43% { transform: translateY(-15px); }
-  70% { transform: translateY(-7px); }
-  90% { transform: translateY(-3px); }
-`;
-
-// Styled Components
-const StyledContainer = styled(Container)(({ theme }) => ({
-  minHeight: '100vh',
-  background: 'transparent',
-  color: 'white',
-  paddingTop: '2rem',
-  paddingBottom: '14rem',
-}));
-
-const ContentWrapper = styled(Box)(({ theme }) => ({
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  minHeight: '80vh',
-  gap: '4rem',
-  animation: `${fadeInUp} 1s ease-out`,
-  [theme.breakpoints.down('md')]: {
-    flexDirection: 'column',
-    textAlign: 'center',
-  },
-}));
-
-const LeftContent = styled(Box)(({ theme }) => ({
-  flex: 1,
-  maxWidth: '500px',
-  animation: `${slideInLeft} 1s ease-out`,
-}));
-
-const RightContent = styled(Box)(({ theme }) => ({
-  flex: 1,
-  position: 'relative',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  animation: `${slideInRight} 1s ease-out 0.2s both`,
-}));
-
-const VideoMockup = styled(Box)(({ theme }) => ({
-  position: 'relative',
-  width: '100%',
-  maxWidth: '600px',
-  height: '400px',
-  background: 'rgba(255, 255, 255, 0.1)',
-  borderRadius: '16px',
-  border: '1px solid rgba(255, 255, 255, 0.2)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  overflow: 'hidden',
-}));
-
-const ActionButton = styled(Button)(({ theme }) => ({
-  borderRadius: '50px',
-  padding: '12px 32px',
-  fontSize: '1.1rem',
-  fontWeight: '600',
-  textTransform: 'none',
-  margin: '0 8px',
-  transition: 'all 0.3s ease',
-  position: 'relative',
-  overflow: 'hidden',
-  '&::before': {
-    content: '""',
-    position: 'absolute',
-    top: 0,
-    left: '-100%',
-    width: '100%',
-    height: '100%',
-    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
-    transition: 'left 0.5s',
-  },
-  '&:hover::before': {
-    left: '100%',
-  },
-  [theme.breakpoints.down('sm')]: {
-    margin: '8px 0',
-    width: '100%',
-  },
-}));
-
-const TextChatButton = styled(ActionButton)(({ theme }) => ({
-  background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-  color: 'white',
-  '&:hover': {
-    background: 'linear-gradient(45deg, #5a6fd8 30%, #6a4190 90%)',
-    transform: 'translateY(-3px)',
-    boxShadow: '0 10px 30px rgba(102, 126, 234, 0.4)',
-  },
-}));
-
-const VideoChatButton = styled(ActionButton)(({ theme }) => ({
-  background: 'white',
-  color: '#333',
-  '&:hover': {
-    background: '#f5f5f5',
-    transform: 'translateY(-3px)',
-    boxShadow: '0 10px 30px rgba(0, 0, 0, 0.2)',
-  },
-}));
-
-const FloatingEmoji = styled(Box)(({ theme, delay = 0 }) => ({
-  position: 'absolute',
-  fontSize: '2rem',
-  animation: `${float} 3s ease-in-out ${delay}s infinite`,
-  cursor: 'pointer',
-  transition: 'transform 0.3s ease',
-  '&:hover': {
-    transform: 'scale(1.3)',
-    animation: `${bounce} 0.8s ease`,
-  },
-}));
-
-const GlowingOrb = styled(Box)(({ theme, color = '#667eea' }) => ({
-  position: 'absolute',
-  width: '200px',
-  height: '200px',
-  borderRadius: '50%',
-  background: `radial-gradient(circle, ${color}20, transparent)`,
-  filter: 'blur(40px)',
-  animation: `${pulse} 4s ease-in-out infinite`,
-  zIndex: -1,
-}));
-
-const AnimatedSection = styled(Box)(({ theme }) => ({
-  opacity: 0,
-  transform: 'translateY(50px)',
-  transition: 'all 0.8s ease',
-  '&.visible': {
-    opacity: 1,
-    transform: 'translateY(0)',
-  },
-}));
-
-const FeatureCard = styled(Box)(({ theme }) => ({
-  textAlign: 'center',
-  padding: '2rem',
-  borderRadius: '20px',
-  background: 'rgba(255, 255, 255, 0.05)',
-  backdropFilter: 'blur(10px)',
-  border: '1px solid rgba(255, 255, 255, 0.1)',
-  transition: 'all 0.3s ease',
-  cursor: 'pointer',
-  '&:hover': {
-    transform: 'translateY(-10px)',
-    background: 'rgba(255, 255, 255, 0.1)',
-    border: '1px solid rgba(102, 126, 234, 0.3)',
-    boxShadow: '0 20px 40px rgba(102, 126, 234, 0.2)',
-  },
-}));
-
-const TestimonialCard = styled(Box)(({ theme }) => ({
-  background: 'rgba(255, 255, 255, 0.05)',
-  borderRadius: '20px',
-  padding: '2rem',
-  backdropFilter: 'blur(15px)',
-  border: '1px solid rgba(255, 255, 255, 0.1)',
-  textAlign: 'left',
-  position: 'relative',
-  transition: 'all 0.3s ease',
-  cursor: 'pointer',
-  '&:hover': {
-    transform: 'translateY(-5px)',
-    background: 'rgba(255, 255, 255, 0.08)',
-    border: '1px solid rgba(102, 126, 234, 0.3)',
-    boxShadow: '0 15px 35px rgba(102, 126, 234, 0.2)',
-  },
-}));
-
-const PulsatingDot = styled(Box)(({ theme, active = false }) => ({
-  width: '12px',
-  height: '12px',
-  borderRadius: '50%',
-  background: active ? '#667eea' : 'rgba(255, 255, 255, 0.3)',
-  cursor: 'pointer',
-  transition: 'all 0.3s ease',
-  animation: active ? `${pulse} 2s infinite` : 'none',
-  '&:hover': {
-    transform: 'scale(1.2)',
-    background: '#667eea',
-  },
-}));
-
-const floatingStickers = [
-  { emoji: '🎉', top: '10%', left: '5%', delay: 0 },
-  { emoji: '✨', top: '20%', right: '10%', delay: 1 },
-  { emoji: '🌟', top: '60%', left: '8%', delay: 2 },
-  { emoji: '💫', top: '80%', right: '15%', delay: 0.5 },
-  { emoji: '🎨', top: '40%', left: '2%', delay: 1.5 },
-  { emoji: '🚀', top: '70%', right: '5%', delay: 2.5 },
-];
-
-
-const IntersectionObserver = ({ children }) => {
+const IntersectionObserver = ({ children, className = '' }) => {
   const [isVisible, setIsVisible] = useState(false);
-  const ref = React.useRef();
+  const ref = useRef();
 
   useEffect(() => {
     const observer = new window.IntersectionObserver(
@@ -270,37 +48,50 @@ const IntersectionObserver = ({ children }) => {
   }, []);
 
   return (
-    <AnimatedSection ref={ref} className={isVisible ? 'visible' : ''}>
+    <div 
+      ref={ref} 
+      className={`transition-all duration-700 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+      } ${className}`}
+    >
       {children}
-    </AnimatedSection>
+    </div>
   );
 };
 
 const Frontpage = () => {
   const [currentTestimonial, setCurrentTestimonial] = useState(0);
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-    const navigate = useNavigate(); // Correct way to get the navigate function
-
-  const Chatwithhoutlogin = () => {
-    navigate('/chat'); // Correct way to navigate
-  };
-
-  const loginButton =()=>{
-    navigate('/login'); // Correct way to navigate
-
-  }
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   const navItems = [
-    { name: 'Home', link: '#home' },
-    { name: 'Features', link: '#features' },
-    { name: 'Testimonials', link: '#testimonials' },
-    { name: 'About', link: '#about' },
-    { name: 'Contact', link: '#contact' },
+    { name: 'Home', section: 'home' },
+    { name: 'Features', section: 'features' },
+    { name: 'Testimonials', section: 'testimonials' },
+    { name: 'Contact', section: 'contact' },
   ];
+
+  const floatingStickers = [
+    { emoji: '🎉', position: 'top-[10%] left-[5%]', delay: 0 },
+    { emoji: '✨', position: 'top-[20%] right-[10%]', delay: 1 },
+    { emoji: '🌟', position: 'top-[60%] left-[8%]', delay: 2 },
+    { emoji: '💫', position: 'bottom-[30%] right-[15%]', delay: 0.5 },
+    { emoji: '🎨', position: 'top-[40%] left-[2%]', delay: 1.5 },
+    { emoji: '🚀', position: 'top-[70%] right-[5%]', delay: 2.5 },
+  ];
+
+  const handleNavigation = (path) => {
+    navigate(path);
+    setMobileMenuOpen(false);
+  };
+
+  const scrollToSection = (sectionId) => {
+    const section = document.getElementById(sectionId);
+    if (section) {
+      section.scrollIntoView({ behavior: 'smooth' });
+      setMobileMenuOpen(false);
+    }
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -309,1127 +100,510 @@ const Frontpage = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const drawer = (
-    <Box onClick={handleDrawerToggle} sx={{ textAlign: 'center', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', height: '100%' }}>
-      <Typography variant="h6" sx={{ my: 2, color: 'white' }}>
-        Ondeal ChatApp
-      </Typography>
-      <Divider sx={{ backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />
-      <List>
-        {navItems.map((item) => (
-          <ListItem key={item.name} disablePadding>
-            <ListItemButton sx={{ textAlign: 'center' }} href={item.link}>
-              <ListItemText primary={item.name} primaryTypographyProps={{ color: 'white' }} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-      </List>
-      <Box sx={{ display: 'flex', justifyContent: 'center', gap: '1rem', mt: 2 }}>
-        <TextChatButton  size="small">Login</TextChatButton>
-        <VideoChatButton size="small">Sign Up</VideoChatButton>
-      </Box>
-    </Box>
-  );
+  // Add CSS keyframes
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+      }
+      @keyframes slideInUp {
+        from { opacity: 0; transform: translateY(30px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-float { animation: float 3s ease-in-out infinite; }
+      .animate-slideInUp { animation: slideInUp 0.8s ease-out; }
+      .animate-fadeInUp { animation: fadeInUp 0.8s ease-out; }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
 
   return (
-    <div style={{ 
-      background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #1a1a2e 100%)', 
-      minHeight: '100vh',
-      position: 'relative',
-      overflow: 'hidden'
-    }}>
-      {/* Navbar */}
-      <AppBar 
-        position="fixed" 
-        sx={{ 
-          background: 'rgba(26, 26, 46, 0.8)', 
-          backdropFilter: 'blur(10px)',
-          boxShadow: '0 2px 10px rgba(0, 0, 0, 0.1)',
-          zIndex: 1100
-        }}
-      >
-        <Container maxWidth="xl">
-          <Toolbar sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography
-              variant="h6"
-              component="div"
-              sx={{ 
-                flexGrow: 1,
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #667eea, #764ba2)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                fontSize: '1.5rem'
-              }}
-            >
-              Ondeal ChatApp
-            </Typography>
-            
-            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: '2rem' }}>
-              {navItems.map((item) => (
-                <Button 
-                  key={item.name} 
-                  href={item.link} 
-                  sx={{ 
-                    color: 'white', 
-                    fontWeight: 500,
-                    '&:hover': {
-                      background: 'rgba(255, 255, 255, 0.1)'
-                    }
-                  }}
-                >
-                  {item.name}
-                </Button>
-              ))}
-              <Box sx={{ display: 'flex', gap: '1rem', ml: 2 }}>
-                <TextChatButton onClick={loginButton}  size="small">Login</TextChatButton>
-            <VideoChatButton 
-  onClick={() => navigate('/signup')}
-  size="small"
->
-  Sign Up
-</VideoChatButton>
-              </Box>
-            </Box>
-            
-            <IconButton
-              color="inherit"
-              aria-label="open drawer"
-              edge="start"
-              onClick={handleDrawerToggle}
-              sx={{ display: { md: 'none' } }}
-            >
-              <MenuIcon />
-            </IconButton>
-          </Toolbar>
-        </Container>
-      </AppBar>
-      
-      {/* Mobile drawer */}
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={handleDrawerToggle}
-        ModalProps={{
-          keepMounted: true,
-        }}
-        sx={{
-          display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { 
-            boxSizing: 'border-box', 
-            width: 240,
-            background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-          },
-        }}
-      >
-        {drawer}
-      </Drawer>
-
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative overflow-hidden">
       {/* Background decorative elements */}
-      <GlowingOrb style={{ top: '10%', left: '10%' }} color="#667eea" />
-      <GlowingOrb style={{ top: '60%', right: '10%' }} color="#764ba2" />
-      <GlowingOrb style={{ bottom: '20%', left: '20%' }} color="#FF6B6B" />
+      <GlowingOrb className="top-[10%] left-[10%]" color="bg-blue-500" />
+      <GlowingOrb className="top-[60%] right-[10%]" color="bg-purple-500" />
+      <GlowingOrb className="bottom-[20%] left-[20%]" color="bg-pink-500" />
       
       {/* Floating stickers */}
       {floatingStickers.map((sticker, index) => (
         <FloatingEmoji
           key={index}
-          style={{ 
-            top: sticker.top, 
-            left: sticker.left, 
-            right: sticker.right 
-          }}
+          emoji={sticker.emoji}
+          className={sticker.position}
           delay={sticker.delay}
-        >
-          {sticker.emoji}
-        </FloatingEmoji>
+        />
       ))}
-      
-      <StyledContainer maxWidth="xl" id="home">
-        <Box sx={{ height: '64px' }} /> {/* Spacer for fixed navbar */}
+
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div 
+              className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent cursor-pointer"
+              onClick={() => scrollToSection('home')}
+            >
+              Ondeal ChatApp
+            </div>
+            
+            {/* Desktop menu */}
+            <div className="hidden md:flex items-center space-x-8">
+              {navItems.map((item) => (
+                <button
+                  key={item.name}
+                  onClick={() => scrollToSection(item.section)}
+                  className="text-gray-300 hover:text-white transition-colors duration-200"
+                >
+                  {item.name}
+                </button>
+              ))}
+              <div className="flex space-x-3">
+                <button 
+                  onClick={() => handleNavigation('/login')}
+                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105"
+                >
+                  Login
+                </button>
+                <button 
+                  onClick={() => handleNavigation('/signup')}
+                  className="px-4 py-2 text-sm font-medium text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-105"
+                >
+                  Sign Up
+                </button>
+              </div>
+            </div>
+            
+            {/* Mobile menu button */}
+            <button
+              className="md:hidden"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            >
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
         
-        <ContentWrapper>
-          <LeftContent>
-            <Typography 
-              variant="h1" 
-              component="h1"
-              sx={{
-                fontSize: { xs: '2.5rem', sm: '3.5rem', md: '4rem' },
-                fontWeight: 'bold',
-                lineHeight: 1.2,
-                marginBottom: '1.5rem',
-                background: 'linear-gradient(45deg, #ffffff 30%, #667eea 70%, #764ba2 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                animation: `${fadeInUp} 1s ease-out 0.5s both`,
-              }}
-            >
-              Talk to strangers,<br />
-              <span style={{ color: '#667eea' }}>Make friends!</span>
-            </Typography>
-            
-            <Typography 
-              variant="h5" 
-              component="p"
-              sx={{
-                fontSize: { xs: '1.1rem', sm: '1.3rem' },
-                fontWeight: 400,
-                marginBottom: '3rem',
-                color: 'rgba(255, 255, 255, 0.8)',
-                lineHeight: 1.6,
-                animation: `${fadeInUp} 1s ease-out 0.7s both`,
-              }}
-            >
-              Experience a random chat alternative to find friends, connect with people, and chat with strangers from all over the world!
-            </Typography>
-            
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: { xs: 'column', sm: 'row' }, 
-              gap: '1rem',
-              animation: `${fadeInUp} 1s ease-out 0.9s both`,
-            }}>
-              <TextChatButton onClick={Chatwithhoutlogin} startIcon={<span>💬</span>}>
-                Chat Without Login 
-              </TextChatButton>
-              <VideoChatButton startIcon={<span>📹</span>}>
-                Chat With Login
-              </VideoChatButton>
-            </Box>
-          </LeftContent>
-          
-          <RightContent>
-            <VideoMockup>
-              <Typography variant="body1" color="rgba(255,255,255,0.7)">
-                Video Chat Preview
-              </Typography>
-            </VideoMockup>
-          </RightContent>
-        </ContentWrapper>
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden bg-slate-800/95 backdrop-blur-md border-t border-white/10">
+            <div className="px-4 py-6 space-y-4">
+              {navItems.map((item) => (
+                <button
+                  key={item.name}
+                  onClick={() => scrollToSection(item.section)}
+                  className="block text-gray-300 hover:text-white transition-colors duration-200 w-full text-left"
+                >
+                  {item.name}
+                </button>
+              ))}
+              <div className="flex flex-col space-y-2 pt-4">
+                <button 
+                  onClick={() => handleNavigation('/login')} 
+                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200"
+                >
+                  Login
+                </button>
+                <button 
+                  onClick={() => handleNavigation('/signup')} 
+                  className="px-4 py-2 text-sm font-medium text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200"
+                >
+                  Sign Up
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </nav>
 
-        {/* Enhanced Second Section - Anonymous Chat */}
+      {/* Main content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-16">
+        
+        {/* Hero Section */}
+        <section id="home" className="py-12 lg:py-20">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="animate-fadeInUp">
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-6">
+                Talk to strangers,<br />
+                <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  Make friends!
+                </span>
+              </h1>
+              
+              <p className="text-lg sm:text-xl text-gray-300 mb-8 leading-relaxed">
+                Experience a random chat alternative to find friends, connect with people, and chat with strangers from all over the world!
+              </p>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button 
+                  onClick={() => handleNavigation('/chat')}
+                  className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25"
+                >
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  Chat Without Login
+                </button>
+                <button 
+                  onClick={() => handleNavigation('/login')}
+                  className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-105 hover:shadow-xl"
+                >
+                  <Video className="w-4 h-4 mr-2" />
+                  Chat With Login
+                </button>
+              </div>
+            </div>
+            
+            <div className="relative animate-fadeInUp">
+              <div className="aspect-video bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 flex items-center justify-center">
+                <div className="text-center text-gray-400">
+                  <Video className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p>Video Chat Preview</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Anonymous Chat Section */}
         <IntersectionObserver>
-          <Box sx={{ 
-            textAlign: 'center', 
-            marginTop: '8rem',
-            marginBottom: '4rem' 
-          }}>
-            <Box sx={{ 
-              display: 'inline-block',
-              background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-              borderRadius: '25px',
-              padding: '10px 24px',
-              marginBottom: '2rem',
-              position: 'relative',
-              overflow: 'hidden',
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                top: 0,
-                left: '-100%',
-                width: '100%',
-                height: '100%',
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent)',
-                animation: `${slideInRight} 2s infinite`,
-              }
-            }}>
-              <Typography variant="body2" color="white" sx={{ fontWeight: 600, position: 'relative', zIndex: 1 }}>
-                ✨ Reach people like you
-              </Typography>
-            </Box>
-
-            <Typography 
-              variant="h2" 
-              component="h2"
-              sx={{
-                fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #ffffff 30%, #667eea 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                marginBottom: '2rem',
-                lineHeight: 1.3,
-              }}
-            >
-              Anonymous Chat, Meet new people
-            </Typography>
+          <section id="features" className="py-16 text-center">
+            <div className="inline-block bg-gradient-to-r from-blue-500 to-purple-500 rounded-full px-6 py-2 mb-8">
+              <span className="text-sm font-semibold">✨ Reach people like you</span>
+            </div>
             
-            <Typography 
-              variant="h5" 
-              component="p"
-              sx={{
-                fontSize: { xs: '1.1rem', sm: '1.2rem' },
-                color: 'rgba(255, 255, 255, 0.7)',
-                marginBottom: '6rem',
-                maxWidth: '800px',
-                margin: '0 auto 6rem auto',
-                lineHeight: 1.6,
-              }}
-            >
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
+              Anonymous Chat,{' '}
+              <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                Meet new people
+              </span>
+            </h2>
+            
+            <p className="text-lg text-gray-300 max-w-4xl mx-auto mb-12 leading-relaxed">
               Find strangers worldwide, the new modern Omegle and OmeTV alternative. Connect with real people, enjoy ad free text and video chats, and build genuine friendships.
-            </Typography>
+            </p>
 
-            {/* Enhanced interests section with more interactive elements */}
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'space-between',
-              gap: '4rem',
-              [theme => theme.breakpoints.down('md')]: {
-                flexDirection: 'column',
-              }
-            }}>
-              <Box sx={{ 
-                flex: 1, 
-                textAlign: 'left',
-                [theme => theme.breakpoints.down('md')]: {
-                  textAlign: 'center',
-                }
-              }}>
-                <Typography 
-                  variant="body1" 
-                  sx={{
-                    color: '#667eea',
-                    fontStyle: 'italic',
-                    marginBottom: '1rem',
-                    fontSize: '1.1rem',
-                    fontWeight: 500,
-                  }}
-                >
-                  🤝 Strangers turned friends
-                </Typography>
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div className="text-left lg:text-left">
+                <p className="text-blue-400 font-medium mb-4">🤝 Strangers turned friends</p>
                 
-                <Typography 
-                  variant="h3" 
-                  component="h3"
-                  sx={{
-                    fontSize: { xs: '1.8rem', sm: '2.2rem', md: '2.5rem' },
-                    fontWeight: 'bold',
-                    color: 'white',
-                    marginBottom: '1.5rem',
-                    lineHeight: 1.3,
-                  }}
-                >
+                <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold mb-6">
                   Chat with Random Strangers With Similar{' '}
-                  <span style={{ 
-                    background: 'linear-gradient(45deg, #667eea, #764ba2)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}>Interests</span>
-                </Typography>
+                  <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    Interests
+                  </span>
+                </h3>
                 
-                <Typography 
-                  variant="body1" 
-                  sx={{
-                    color: 'rgba(255, 255, 255, 0.7)',
-                    fontSize: '1.1rem',
-                    lineHeight: 1.6,
-                    maxWidth: '500px',
-                  }}
-                >
+                <p className="text-gray-300 leading-relaxed max-w-md">
                   Talk to online strangers who love what you love, Chat about hobbies and enjoy fun conversations - all from one place! Making new friends based on interests is made easy.
-                </Typography>
-              </Box>
+                </p>
+              </div>
 
-              <Box sx={{ 
-                flex: 1, 
-                position: 'relative',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                minHeight: '400px'
-              }}>
-                {/* Enhanced interests panel */}
-                <Box sx={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  borderRadius: '20px',
-                  padding: '2rem',
-                  backdropFilter: 'blur(15px)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  minWidth: '300px',
-                  position: 'relative',
-                  transition: 'transform 0.3s ease',
-                  '&:hover': {
-                    transform: 'translateY(-5px)',
-                    boxShadow: '0 20px 40px rgba(102, 126, 234, 0.2)',
-                  }
-                }}>
-                  <Typography variant="h6" color="white" sx={{ marginBottom: '1.5rem', fontWeight: 700 }}>
-                    🎯 Interests
-                  </Typography>
+              <div className="relative">
+                <div className="bg-white/10 backdrop-blur-sm rounded-2xl border border-white/20 p-6 max-w-sm mx-auto">
+                  <h4 className="font-bold mb-4 flex items-center">
+                    <span className="mr-2">🎯</span>
+                    Interests
+                  </h4>
                   
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '1rem' }}>
-                    {[
-                      { name: 'Football', color: '#4CAF50' },
-                      { name: 'Discord', color: '#7289DA' },
-                      { name: 'Anime', color: '#FF6B6B' }
-                    ].map((interest, index) => (
-                      <Box key={interest.name} sx={{
-                        background: `linear-gradient(45deg, ${interest.color}, ${interest.color}dd)`,
-                        color: 'white',
-                        padding: '8px 14px',
-                        borderRadius: '25px',
-                        fontSize: '0.9rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        cursor: 'pointer',
-                        transition: 'all 0.3s ease',
-                        fontWeight: 500,
-                        '&:hover': {
-                          transform: 'scale(1.05)',
-                          boxShadow: `0 4px 15px ${interest.color}40`,
-                        }
-                      }}>
-                        <span>×</span> {interest.name}
-                      </Box>
-                    ))}
-                  </Box>
-                  
-                  <Box sx={{
-                    background: 'rgba(255, 255, 255, 0.15)',
-                    padding: '8px 14px',
-                    borderRadius: '25px',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    fontSize: '0.9rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    border: '1px dashed rgba(255, 255, 255, 0.3)',
-                    '&:hover': {
-                      background: 'rgba(255, 255, 255, 0.2)',
-                      border: '1px dashed rgba(255, 255, 255, 0.5)',
-                    }
-                  }}>
-                    <span>+</span> Add Interest
-                  </Box>
-                </Box>
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        { name: 'Football', color: 'bg-green-500' },
+                        { name: 'Discord', color: 'bg-indigo-500' },
+                        { name: 'Anime', color: 'bg-pink-500' }
+                      ].map((interest) => (
+                        <span 
+                          key={interest.name}
+                          className={`${interest.color} px-3 py-1 rounded-full text-sm font-medium text-white flex items-center gap-1 hover:scale-105 transition-transform cursor-pointer`}
+                        >
+                          <span>×</span>
+                          {interest.name}
+                        </span>
+                      ))}
+                    </div>
+                    
+                    <button className="w-full bg-white/10 border border-dashed border-white/30 rounded-full px-4 py-2 text-sm text-gray-300 hover:bg-white/20 transition-colors flex items-center justify-center gap-2">
+                      <span>+</span>
+                      Add Interest
+                    </button>
+                  </div>
+                </div>
 
-                {/* Enhanced floating decorations */}
-                {[
-                  { emoji: '🎮', top: '10px', left: '10px', delay: 0 },
-                  { emoji: '⭐', top: '30px', right: '20px', delay: 1 },
-                  { emoji: '🎯', top: '50%', left: '-20px', delay: 2 },
-                  { emoji: '✨', bottom: '100px', right: '10px', delay: 0.5 },
-                  { emoji: '🎨', bottom: '20px', left: '50px', delay: 1.5 },
-                  { emoji: '🚀', top: '60%', right: '-10px', delay: 2.5 }
-                ].map((item, index) => (
-                  <FloatingEmoji
-                    key={index}
-                    style={{ 
-                      top: item.top,
-                      bottom: item.bottom,
-                      left: item.left,
-                      right: item.right,
-                      fontSize: '2.5rem'
-                    }}
-                    delay={item.delay}
-                  >
-                    {item.emoji}
-                  </FloatingEmoji>
-                ))}
-              </Box>
-            </Box>
-          </Box>
+                {/* Floating decorations */}
+                <FloatingEmoji emoji="🎮" className="absolute -top-4 -left-4" />
+                <FloatingEmoji emoji="⭐" className="absolute -top-2 -right-6" delay={1} />
+                <FloatingEmoji emoji="🎯" className="absolute top-1/2 -left-8" delay={2} />
+                <FloatingEmoji emoji="✨" className="absolute bottom-4 -right-4" delay={0.5} />
+              </div>
+            </div>
+          </section>
         </IntersectionObserver>
 
-        {/* Enhanced Features Grid */}
+        {/* Features Section */}
         <IntersectionObserver>
-          <Box sx={{ 
-            textAlign: 'center', 
-            marginTop: '8rem',
-            marginBottom: '6rem',
-            id: 'features'
-          }}>
-            <Typography 
-              variant="h2" 
-              component="h2"
-              sx={{
-                fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #ffffff 30%, #667eea 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                marginBottom: '2rem',
-                lineHeight: 1.3,
-              }}
-            >
-              The best site to Chat with Male and Female Strangers.
-            </Typography>
-            
-            <Typography 
-              variant="h6" 
-              component="p"
-              sx={{
-                fontSize: { xs: '1rem', sm: '1.1rem' },
-                color: 'rgba(255, 255, 255, 0.7)',
-                marginBottom: '4rem',
-                maxWidth: '900px',
-                margin: '0 auto 4rem auto',
-                lineHeight: 1.6,
-              }}
-            >
-              Many text and video chat apps offer various features for meeting random strangers or chatting without bots, but not all of them are modern, secure and feature rich with a diverse interesting people from around the globe.
-            </Typography>
+          <section id="features" className="py-16">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
+                The best site to Chat with{' '}
+                <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  Strangers
+                </span>
+              </h2>
+              
+              <p className="text-lg text-gray-300 max-w-4xl mx-auto leading-relaxed">
+                Many text and video chat apps offer various features for meeting random strangers, but not all of them are modern, secure and feature rich with diverse interesting people from around the globe.
+              </p>
+            </div>
 
-            <Box sx={{ 
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-              gap: '2rem',
-              marginTop: '4rem'
-            }}>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
                 {
-                  icon: '📹',
+                  icon: Video,
                   title: 'Video Chat',
                   description: 'Experience authentic face to face encounters with real people from all over the world.',
-                  gradient: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)'
+                  gradient: 'from-blue-500 to-purple-500'
                 },
                 {
-                  icon: '👥',
+                  icon: Users,
                   title: 'Friends & History',
                   description: 'Had a fun chat but skipped by accident? Find them in your chat history and add them as a friend.',
-                  gradient: 'linear-gradient(45deg, #4ECDC4 30%, #44A08D 90%)'
+                  gradient: 'from-teal-500 to-green-500'
                 },
                 {
-                  icon: '🏷️',
+                  icon: Star,
                   title: 'Search Filters',
                   description: 'Want to narrow down your search? Use interests, genders or locations to filter the strangers you meet.',
-                  gradient: 'linear-gradient(45deg, #FF6B6B 30%, #FF8E53 90%)'
+                  gradient: 'from-orange-500 to-red-500'
                 },
                 {
-                  icon: '💬',
+                  icon: MessageCircle,
                   title: 'Text Chat',
                   description: 'Not in the mood for video? No problem! You can also chat with strangers via text messages. Full of features.',
-                  gradient: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)'
+                  gradient: 'from-blue-500 to-purple-500'
                 },
                 {
-                  icon: '🛡️',
+                  icon: Shield,
                   title: 'Safety & Moderation',
                   description: 'We make use of advanced AI technologies and enhanced spam protection to keep your chats clean.',
-                  gradient: 'linear-gradient(45deg, #4CAF50 30%, #45a049 90%)'
+                  gradient: 'from-green-500 to-emerald-500'
                 },
                 {
-                  icon: '⭐',
-                  title: 'Feature rich',
+                  icon: Globe,
+                  title: 'Feature Rich',
                   description: 'From sending photos, videos, having voice calls, to sharing GIFs and adding avatars, we have it all.',
-                  gradient: 'linear-gradient(45deg, #FF6B35 30%, #F7931E 90%)'
+                  gradient: 'from-yellow-500 to-orange-500'
                 }
-              ].map((feature, index) => (
-                <FeatureCard key={index}>
-                  <Box sx={{
-                    width: '80px',
-                    height: '80px',
-                    borderRadius: '50%',
-                    background: feature.gradient,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    margin: '0 auto 1.5rem auto',
-                    fontSize: '2rem',
-                    position: 'relative',
-                    '&::after': {
-                      content: '""',
-                      position: 'absolute',
-                      top: '-5px',
-                      left: '-5px',
-                      right: '-5px',
-                      bottom: '-5px',
-                      borderRadius: '50%',
-                      background: feature.gradient,
-                      opacity: 0,
-                      transition: 'opacity 0.3s ease',
-                      zIndex: -1,
-                      filter: 'blur(10px)',
-                    },
-                    '&:hover::after': {
-                      opacity: 0.7,
-                    }
-                  }}>
-                    {feature.icon}
-                  </Box>
-                  <Typography variant="h5" color="white" sx={{ marginBottom: '1rem', fontWeight: 600 }}>
-                    {feature.title}
-                  </Typography>
-                  <Typography variant="body1" color="rgba(255, 255, 255, 0.7)" sx={{ lineHeight: 1.6 }}>
-                    {feature.description}
-                  </Typography>
-                </FeatureCard>
-              ))}
-            </Box>
-          </Box>
+              ].map((feature, index) => {
+                const IconComponent = feature.icon;
+                return (
+                  <div 
+                    key={index}
+                    className="bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-6 text-center hover:bg-white/10 hover:border-blue-500/30 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-2 transition-all duration-300 cursor-pointer group"
+                  >
+                    <div className={`w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-r ${feature.gradient} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
+                      <IconComponent className="w-8 h-8 text-white" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
+                    <p className="text-gray-400 leading-relaxed">{feature.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         </IntersectionObserver>
 
-        {/* Enhanced Video Chat Section */}
+        {/* Testimonials Section */}
         <IntersectionObserver>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            gap: '4rem',
-            marginTop: '8rem',
-            marginBottom: '6rem',
-            [theme => theme.breakpoints.down('md')]: {
-              flexDirection: 'column',
-            }
-          }}>
-            <Box sx={{ 
-              flex: 1, 
-              position: 'relative',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              minHeight: '400px'
-            }}>
-              <VideoMockup>
-                <Typography variant="body1" color="rgba(255,255,255,0.7)">
-                  Video Chat Interface
-                </Typography>
-              </VideoMockup>
-            </Box>
-
-            <Box sx={{ 
-              flex: 1, 
-              textAlign: 'left',
-              [theme => theme.breakpoints.down('md')]: {
-                textAlign: 'center',
-              }
-            }}>
-              <Typography 
-                variant="body1" 
-                sx={{
-                  color: '#667eea',
-                  fontStyle: 'italic',
-                  marginBottom: '1rem',
-                  fontSize: '1.1rem',
-                  fontWeight: 500,
-                }}
-              >
-                🌍 Say hello to strangers worldwide
-              </Typography>
+          <section id="testimonials" className="py-16">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
+                Don't take our{' '}
+                <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                  word for it
+                </span>
+              </h2>
               
-              <Typography 
-                variant="h3" 
-                component="h3"
-                sx={{
-                  fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-                  fontWeight: 'bold',
-                  color: 'white',
-                  marginBottom: '1.5rem',
-                  lineHeight: 1.3,
-                }}
-              >
-                Simple and <span style={{ 
-                  background: 'linear-gradient(45deg, #667eea, #764ba2)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}>Fun</span> Video Chats
-              </Typography>
-              
-              <Typography 
-                variant="body1" 
-                sx={{
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  fontSize: '1.1rem',
-                  lineHeight: 1.6,
-                  maxWidth: '500px',
-                }}
-              >
-                Enjoy video chats with strangers worldwide, our platform is designed to make it easy and safe to connect with people from all over the world. Meet new people, make friends, and have fun!
-              </Typography>
-            </Box>
-          </Box>
-        </IntersectionObserver>
+              <p className="text-lg text-gray-300 max-w-4xl mx-auto leading-relaxed">
+                We've asked random strangers to try our platform. Here's what they had to say about our safe space for chatting with strangers:
+              </p>
+            </div>
 
-        {/* Enhanced Testimonials Section */}
-        <IntersectionObserver>
-          <Box sx={{ 
-            textAlign: 'center', 
-            marginTop: '8rem',
-            marginBottom: '4rem',
-            id: 'testimonials'
-          }}>
-            <Typography 
-              variant="h2" 
-              component="h2"
-              sx={{
-                fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #ffffff 30%, #667eea 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                marginBottom: '2rem',
-                lineHeight: 1.3,
-              }}
-            >
-              Don't take our word for it
-            </Typography>
-            
-            <Typography 
-              variant="h6" 
-              component="p"
-              sx={{
-                fontSize: { xs: '1rem', sm: '1.1rem' },
-                color: 'rgba(255, 255, 255, 0.7)',
-                marginBottom: '4rem',
-                maxWidth: '900px',
-                margin: '0 auto 4rem auto',
-                lineHeight: 1.6,
-              }}
-            >
-              We've asked random strangers, both men and women, to try our Omegle alternative platform for video and text chat. Here's what they had to say about our safe space for chatting with strangers:
-            </Typography>
-
-            <Box sx={{ 
-              display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(3, 1fr)' },
-              gap: '2rem',
-              marginTop: '4rem'
-            }}>
+            <div className="grid lg:grid-cols-3 gap-6 mb-8">
               {[
                 {
-                  text: "I've tried many platforms to video chat with strangers, but they were all flawed! Chitchat seems like the best Omegle alternative, and I've been really enjoying it! I hope it becomes the number one platform for random video chat because it really deserves it. I've made lots of friends from different countries and I'm thrilled with the safe, fun environment it provides.",
+                  text: "I've tried many platforms to video chat with strangers, but they were all flawed! ChitChat seems like the best Omegle alternative, and I've been really enjoying it!",
                   name: "Stranger #4",
                   role: "Premium User",
-                  gradient: "linear-gradient(45deg, #667eea, #764ba2)",
+                  gradient: "from-blue-500 to-purple-500",
                   rating: 5
                 },
                 {
-                  text: "Chitchat.gg is the best Omegle alternative I've tried! It made connecting with strangers through video chat fun and easy. It's user-friendly, quick, and I've had engaging conversations with people worldwide. A fantastic way to meet new people and find friends in a safe environment.",
+                  text: "ChitChat is the best Omegle alternative I've tried! It made connecting with strangers through video chat fun and easy. It's user-friendly, quick, and engaging.",
                   name: "Stranger #1",
                   role: "Beta Tester",
-                  gradient: "linear-gradient(45deg, #FF6B6B, #4ECDC4)",
+                  gradient: "from-pink-500 to-teal-500",
                   rating: 5
                 },
                 {
-                  text: "I recently felt lonely and struggled to make friends, but this Monkey app and Ome.tv alternative changed that. It's simple to find someone to text chat or video chat with, and I've made new friends from all over the globe. We've even added each other on Discord and Snapchat. A real game-changer for safely chatting with strangers!",
+                  text: "I recently felt lonely and struggled to make friends, but this app changed that. It's simple to find someone to chat with, and I've made friends from all over the globe.",
                   name: "Stranger #2",
                   role: "Regular User",
-                  gradient: "linear-gradient(45deg, #FF6B35, #F7931E)",
+                  gradient: "from-orange-500 to-yellow-500",
                   rating: 4
                 }
               ].map((testimonial, index) => (
-                <TestimonialCard 
+                <div 
                   key={index}
-                  sx={{
-                    transform: currentTestimonial === index ? 'translateY(-5px)' : 'translateY(0)',
-                    boxShadow: currentTestimonial === index ? '0 20px 40px rgba(102, 126, 234, 0.3)' : 'none',
-                  }}
+                  className={`bg-white/5 backdrop-blur-sm rounded-2xl border border-white/10 p-6 hover:bg-white/10 hover:border-blue-500/30 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1 transition-all duration-300 ${
+                    currentTestimonial === index ? 'ring-2 ring-blue-500/50 -translate-y-1' : ''
+                  }`}
                 >
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                    <Typography variant="h4" color="#667eea" sx={{ fontSize: '3rem', lineHeight: 1 }}>
-                      "
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: '2px' }}>
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-4xl text-blue-400">"</span>
+                    <div className="flex space-x-1">
                       {[...Array(5)].map((_, starIndex) => (
-                        <Box key={starIndex} sx={{
-                          color: starIndex < testimonial.rating ? '#FFD700' : 'rgba(255, 255, 255, 0.3)',
-                          fontSize: '1rem'
-                        }}>
-                          ⭐
-                        </Box>
+                        <Star 
+                          key={starIndex}
+                          className={`w-4 h-4 ${
+                            starIndex < testimonial.rating ? 'text-yellow-400 fill-current' : 'text-gray-400'
+                          }`}
+                        />
                       ))}
-                    </Box>
-                  </Box>
+                    </div>
+                  </div>
                   
-                  <Typography variant="body1" color="rgba(255, 255, 255, 0.8)" sx={{ 
-                    marginBottom: '2rem', 
-                    lineHeight: 1.6,
-                    fontSize: '0.95rem' 
-                  }}>
-                    {testimonial.text}
-                  </Typography>
+                  <p className="text-gray-300 mb-6 leading-relaxed">{testimonial.text}</p>
                   
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <Box sx={{ 
-                      width: '50px', 
-                      height: '50px', 
-                      borderRadius: '50%', 
-                      background: testimonial.gradient,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '1.2rem',
-                      position: 'relative',
-                      '&::after': {
-                        content: '""',
-                        position: 'absolute',
-                        top: '-2px',
-                        left: '-2px',
-                        right: '-2px',
-                        bottom: '-2px',
-                        borderRadius: '50%',
-                        background: testimonial.gradient,
-                        opacity: 0.3,
-                        zIndex: -1,
-                        filter: 'blur(4px)',
-                      }
-                    }}>
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-10 h-10 rounded-full bg-gradient-to-r ${testimonial.gradient} flex items-center justify-center text-white font-bold`}>
                       {testimonial.name.charAt(0)}
-                    </Box>
-                    <Box>
-                      <Typography variant="body2" color="white" sx={{ fontWeight: 600 }}>
-                        {testimonial.name}
-                      </Typography>
-                      <Typography variant="caption" color="rgba(255, 255, 255, 0.6)">
-                        {testimonial.role}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </TestimonialCard>
+                    </div>
+                    <div>
+                      <p className="font-semibold">{testimonial.name}</p>
+                      <p className="text-sm text-gray-400">{testimonial.role}</p>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </Box>
+            </div>
 
-            <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              gap: '12px', 
-              marginTop: '3rem' 
-            }}>
+            <div className="flex justify-center space-x-3">
               {[0, 1, 2].map((index) => (
-                <PulsatingDot 
-                  key={index} 
-                  active={currentTestimonial === index}
+                <button
+                  key={index}
+                  className={`w-3 h-3 rounded-full transition-all duration-200 ${
+                    currentTestimonial === index 
+                      ? 'bg-blue-500 animate-pulse' 
+                      : 'bg-white/30 hover:bg-blue-400'
+                  }`}
                   onClick={() => setCurrentTestimonial(index)}
                 />
               ))}
-            </Box>
-          </Box>
+            </div>
+          </section>
         </IntersectionObserver>
 
-        {/* Enhanced Friends Section */}
+        {/* Call to Action */}
         <IntersectionObserver>
-          <Box sx={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'space-between',
-            gap: '4rem',
-            marginBottom: '6rem',
-            [theme => theme.breakpoints.down('md')]: {
-              flexDirection: 'column-reverse',
-            }
-          }}>
-            <Box sx={{ 
-              flex: 1, 
-              textAlign: 'left',
-              [theme => theme.breakpoints.down('md')]: {
-                textAlign: 'center',
-              }
-            }}>
-              <Typography 
-                variant="body1" 
-                sx={{
-                  color: '#667eea',
-                  fontStyle: 'italic',
-                  marginBottom: '1rem',
-                  fontSize: '1.1rem',
-                  fontWeight: 500,
-                }}
-              >
-                💫 Make the most out of your chats
-              </Typography>
+          <section id="contact" className="py-16">
+            <div className="bg-gradient-to-r from-blue-500/10 to-purple-500/10 backdrop-blur-sm rounded-3xl border border-white/10 p-8 lg:p-12 text-center relative overflow-hidden">
+              <div className="relative z-10">
+                <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6">
+                  Ready to make{' '}
+                  <span className="bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                    new friends?
+                  </span>
+                </h2>
+                
+                <p className="text-lg text-gray-300 max-w-3xl mx-auto mb-8 leading-relaxed">
+                  Join thousands of people already chatting and making connections worldwide. Your next best friend is just one click away!
+                </p>
+                
+                <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+                  <button 
+                    onClick={() => handleNavigation('/chat')}
+                    className="px-8 py-3 text-lg font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 flex items-center justify-center"
+                  >
+                    <span className="mr-2">🚀</span>
+                    Start Chatting Now
+                  </button>
+                  <button 
+                    onClick={() => scrollToSection('features')}
+                    className="px-8 py-3 text-lg font-semibold text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-105 hover:shadow-xl flex items-center justify-center"
+                  >
+                    <span className="mr-2">✨</span>
+                    Learn More
+                  </button>
+                </div>
+                
+                {/* Stats */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  {[
+                    { number: '50K+', label: 'Active Users', icon: '👥' },
+                    { number: '1M+', label: 'Connections Made', icon: '🤝' },
+                    { number: '150+', label: 'Countries', icon: '🌍' }
+                  ].map((stat, index) => (
+                    <div key={index} className="bg-white/5 backdrop-blur-sm rounded-xl border border-white/10 p-4 hover:bg-white/10 transition-all duration-200 hover:-translate-y-1">
+                      <div className="text-2xl mb-2">{stat.icon}</div>
+                      <div className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                        {stat.number}
+                      </div>
+                      <div className="text-sm text-gray-400">{stat.label}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        </IntersectionObserver>
+
+        {/* Footer */}
+        <IntersectionObserver>
+          <footer className="pt-16 border-t border-white/10">
+            <div className="text-center">
+              <div className="flex flex-wrap justify-center gap-4 mb-6">
+                {[
+                  { icon: '🌟', text: 'Premium Features' },
+                  { icon: '🔒', text: 'Secure & Private' },
+                  { icon: '🌍', text: 'Global Community' },
+                  { icon: '⚡', text: 'Instant Connect' }
+                ].map((feature, index) => (
+                  <div key={index} className="flex items-center space-x-2 px-4 py-2 bg-white/5 backdrop-blur-sm rounded-full border border-white/10 hover:bg-white/10 transition-colors">
+                    <span>{feature.icon}</span>
+                    <span className="text-sm text-gray-300">{feature.text}</span>
+                  </div>
+                ))}
+              </div>
               
-              <Typography 
-                variant="h3" 
-                component="h3"
-                sx={{
-                  fontSize: { xs: '2rem', sm: '2.5rem', md: '3rem' },
-                  fontWeight: 'bold',
-                  color: 'white',
-                  marginBottom: '1.5rem',
-                  lineHeight: 1.3,
-                }}
-              >
-                From Strangers to <span style={{ 
-                  background: 'linear-gradient(45deg, #FF6B35, #F7931E)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}>Friends</span>
-              </Typography>
+              <p className="text-gray-500 mb-4">
+                © 2024 ChitChat - Connect with strangers, make friends worldwide
+              </p>
               
-              <Typography 
-                variant="body1" 
-                sx={{
-                  color: 'rgba(255, 255, 255, 0.7)',
-                  fontSize: '1.1rem',
-                  lineHeight: 1.6,
-                  maxWidth: '500px',
-                }}
-              >
-                Discover new people, make real and genuine connections, learn new languages or just have casual text or video chats. Our platform is designed to help you experience the best of online chatting.
-              </Typography>
-            </Box>
-
-            <Box sx={{ 
-              flex: 1, 
-              position: 'relative',
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              minHeight: '400px'
-            }}>
-              <VideoMockup>
-                <Typography variant="body1" color="rgba(255,255,255,0.7)">
-                  Friends Connection Interface
-                </Typography>
-              </VideoMockup>
-            </Box>
-          </Box>
+              <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-400">
+                {['Terms', 'Privacy', 'Support', 'Community'].map((link) => (
+                  <button key={link} className="hover:text-blue-400 transition-colors">
+                    {link}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </footer>
         </IntersectionObserver>
-
-        {/* Enhanced Call to Action */}
-        <IntersectionObserver>
-          <Box sx={{ 
-            textAlign: 'center', 
-            marginTop: '8rem',
-            marginBottom: '4rem',
-            padding: '4rem 2rem',
-            borderRadius: '30px',
-            background: 'linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%)',
-            backdropFilter: 'blur(20px)',
-            border: '1px solid rgba(255, 255, 255, 0.1)',
-            position: 'relative',
-            overflow: 'hidden',
-            '&::before': {
-              content: '""',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'linear-gradient(45deg, rgba(102, 126, 234, 0.05) 0%, transparent 50%, rgba(118, 75, 162, 0.05) 100%)',
-              animation: `${slideInRight} 10s linear infinite`,
-            }
-          }}>
-            <Typography 
-              variant="h2" 
-              component="h2"
-              sx={{
-                fontSize: { xs: '2.5rem', sm: '3rem', md: '3.5rem' },
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #ffffff 30%, #667eea 70%, #764ba2 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                marginBottom: '2rem',
-                lineHeight: 1.3,
-                position: 'relative',
-                zIndex: 1,
-              }}
-            >
-              Ready to make new friends?
-            </Typography>
-            
-            <Typography 
-              variant="h5" 
-              component="p"
-              sx={{
-                fontSize: { xs: '1.2rem', sm: '1.4rem' },
-                color: 'rgba(255, 255, 255, 0.8)',
-                marginBottom: '3rem',
-                maxWidth: '700px',
-                margin: '0 auto 3rem auto',
-                lineHeight: 1.6,
-                position: 'relative',
-                zIndex: 1,
-              }}
-            >
-              Join thousands of people already chatting and making connections worldwide. Your next best friend is just one click away!
-            </Typography>
-            
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: { xs: 'column', sm: 'row' }, 
-              gap: '1.5rem',
-              justifyContent: 'center',
-              alignItems: 'center',
-              position: 'relative',
-              zIndex: 1,
-            }}>
-              <TextChatButton 
-                size="large" 
-                startIcon={<span style={{ fontSize: '1.5rem' }}>🚀</span>}
-                sx={{ 
-                  fontSize: '1.2rem',
-                  padding: '16px 40px',
-                  minWidth: '200px'
-                }}
-              >
-                Start Chatting Now
-              </TextChatButton>
-              <VideoChatButton 
-                size="large" 
-                startIcon={<span style={{ fontSize: '1.5rem' }}>✨</span>}
-                sx={{ 
-                  fontSize: '1.2rem',
-                  padding: '16px 40px',
-                  minWidth: '200px'
-                }}
-              >
-                Learn More
-              </VideoChatButton>
-            </Box>
-            
-            {/* Floating stats */}
-            <Box sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: '3rem',
-              marginTop: '3rem',
-              flexWrap: 'wrap'
-            }}>
-              {[
-                { number: '50K+', label: 'Active Users', icon: '👥' },
-                { number: '1M+', label: 'Connections Made', icon: '🤝' },
-                { number: '150+', label: 'Countries', icon: '🌍' }
-              ].map((stat, index) => (
-                <Box key={index} sx={{
-                  textAlign: 'center',
-                  padding: '1rem',
-                  borderRadius: '16px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  minWidth: '120px',
-                  transition: 'transform 0.3s ease',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    transform: 'translateY(-5px)',
-                    background: 'rgba(255, 255, 255, 0.08)',
-                  }
-                }}>
-                  <Typography variant="h4" sx={{
-                    fontSize: '1.5rem',
-                    marginBottom: '0.5rem'
-                  }}>
-                    {stat.icon}
-                  </Typography>
-                  <Typography variant="h5" color="white" sx={{
-                    fontWeight: 'bold',
-                    marginBottom: '0.25rem',
-                    background: 'linear-gradient(45deg, #667eea, #764ba2)',
-                    WebkitBackgroundClip: 'text',
-                    WebkitTextFillColor: 'transparent',
-                  }}>
-                    {stat.number}
-                  </Typography>
-                  <Typography variant="caption" color="rgba(255, 255, 255, 0.7)">
-                    {stat.label}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          </Box>
-        </IntersectionObserver>
-
-        {/* Enhanced Footer Section */}
-        <IntersectionObserver>
-          <Box sx={{ 
-            borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-            paddingTop: '4rem',
-            marginTop: '6rem',
-            textAlign: 'center',
-            id: 'contact'
-          }}>
-            <Box sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: '2rem',
-              marginBottom: '2rem',
-              flexWrap: 'wrap'
-            }}>
-              {[
-                { icon: '🌟', text: 'Premium Features' },
-                { icon: '🔒', text: 'Secure & Private' },
-                { icon: '🌍', text: 'Global Community' },
-                { icon: '⚡', text: 'Instant Connect' }
-              ].map((feature, index) => (
-                <Box key={index} sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 16px',
-                  borderRadius: '20px',
-                  background: 'rgba(255, 255, 255, 0.05)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  transition: 'all 0.3s ease',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    transform: 'translateY(-2px)',
-                  }
-                }}>
-                  <span style={{ fontSize: '1.2rem' }}>{feature.icon}</span>
-                  <Typography variant="body2" color="rgba(255, 255, 255, 0.8)">
-                    {feature.text}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-            
-            <Typography variant="body2" color="rgba(255, 255, 255, 0.5)" sx={{
-              marginBottom: '1rem'
-            }}>
-              © 2024 ChitChat - Connect with strangers, make friends worldwide
-            </Typography>
-            
-            <Box sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: '1rem',
-              flexWrap: 'wrap'
-            }}>
-              {['Terms', 'Privacy', 'Support', 'Community'].map((link, index) => (
-                <Typography 
-                  key={link}
-                  variant="caption" 
-                  color="rgba(255, 255, 255, 0.6)"
-                  sx={{
-                    cursor: 'pointer',
-                    transition: 'color 0.3s ease',
-                    '&:hover': {
-                      color: '#667eea',
-                    }
-                  }}
-                >
-                  {link}
-                </Typography>
-              ))}
-            </Box>
-          </Box>
-        </IntersectionObserver>
-      </StyledContainer>
+      </div>
       
-      {/* Floating action button for quick access */}
-      <Box sx={{
-        position: 'fixed',
-        bottom: '30px',
-        right: '30px',
-        zIndex: 1000,
-        display: { xs: 'none', md: 'block' }
-      }}>
-        <Box sx={{
-          width: '60px',
-          height: '60px',
-          borderRadius: '50%',
-          background: 'linear-gradient(45deg, #667eea 30%, #764ba2 90%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          boxShadow: '0 8px 25px rgba(102, 126, 234, 0.4)',
-          transition: 'all 0.3s ease',
-          animation: `${pulse} 3s infinite`,
-          '&:hover': {
-            transform: 'scale(1.1)',
-            boxShadow: '0 12px 35px rgba(102, 126, 234, 0.6)',
-          }
-        }}>
-          <Typography sx={{ fontSize: '1.8rem' }}>💬</Typography>
-        </Box>
-      </Box>
+      {/* Floating action button */}
+      <div className="fixed bottom-8 right-8 z-50 hidden lg:block">
+        <button 
+          onClick={() => handleNavigation('/chat')}
+          className="w-14 h-14 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-blue-500/25 hover:scale-110 hover:shadow-2xl hover:shadow-blue-500/40 transition-all duration-200 animate-pulse"
+        >
+          <MessageCircle className="w-6 h-6" />
+        </button>
+      </div>
     </div>
   );
 };
