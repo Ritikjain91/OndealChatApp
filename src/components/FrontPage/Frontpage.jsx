@@ -361,24 +361,7 @@ const Frontpage = () => {
 
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {[
-                {
-                  icon: Video,
-                  title: 'Video Chat',
-                  description: 'Experience authentic face to face encounters with real people from all over the world.',
-                  gradient: 'from-blue-500 to-purple-500'
-                },
-                {
-                  icon: Users,
-                  title: 'Friends & History',
-                  description: 'Had a fun chat but skipped by accident? Find them in your chat history and add them as a friend.',
-                  gradient: 'from-teal-500 to-green-500'
-                },
-                {
-                  icon: Star,
-                  title: 'Search Filters',
-                  description: 'Want to narrow down your search? Use interests, genders or locations to filter the strangers you meet.',
-                  gradient: 'from-orange-500 to-red-500'
-                },
+               
                 {
                   icon: MessageCircle,
                   title: 'Text Chat',
