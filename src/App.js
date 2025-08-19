@@ -10,9 +10,9 @@ import './App.css';
 
 
 import ErrorPage from './components/ErrorPage/ErrorPage'; 
-import Chat from './components/ChatPage/Chat';
+import Chat from './components/ChatPage/ChoosingFriend';
 import Frontpage from './components/FrontPage/Frontpage';
-
+import ChatApp from './components/ChatPage/chatapp';
 const router = createBrowserRouter(
   createRoutesFromElements(
     <>
@@ -21,6 +21,7 @@ const router = createBrowserRouter(
       <Route path="/login" element={<Login />} errorElement={<ErrorPage />} />
       <Route path="/signup" element={<Signup />} errorElement={<ErrorPage />} />
       <Route path="*" element={<ErrorPage />} />
+      <Route path='chatapp' element={<ChatApp/>}  errorElement={<ErrorPage />} />
     </>
   )
 );
