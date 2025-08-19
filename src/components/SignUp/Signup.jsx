@@ -7,6 +7,10 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Box from '@mui/material/Box';
 import Container from '@mui/material/Container';
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
 
 const SignupContainer = styled(Container)(({ theme }) => ({
   minHeight: '100vh',
@@ -55,6 +59,7 @@ const Signup = () => {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [gender, setGender] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
@@ -65,13 +70,13 @@ const Signup = () => {
     try {
       const response = await axios.post(
         'http://localhost:5000/signup',
-        { username, email, password },
+        { username, email, password, gender },
         { withCredentials: true }
       );
 
       if (response.status === 201) {
         alert('Signup successful! Please login.');
-        navigate('/login'); // Redirect to login page after successful signup
+        navigate('/login');
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Signup failed. Please try again.');
@@ -156,7 +161,7 @@ const Signup = () => {
           onChange={(e) => setPassword(e.target.value)}
           required
           sx={{
-            marginBottom: 2,
+            marginBottom: 3,
             '& .MuiOutlinedInput-root': {
               color: 'white',
               '& fieldset': {
@@ -171,6 +176,38 @@ const Signup = () => {
             },
           }}
         />
+
+        <FormControl fullWidth sx={{ 
+          marginBottom: 3,
+          '& .MuiInputLabel-root': {
+            color: 'rgba(255, 255, 255, 0.7)',
+          },
+          '& .MuiOutlinedInput-root': {
+            color: 'white',
+            '& fieldset': {
+              borderColor: 'rgba(255, 255, 255, 0.3)',
+            },
+            '&:hover fieldset': {
+              borderColor: 'rgba(255, 255, 255, 0.5)',
+            },
+          },
+        }}>
+          <InputLabel id="gender-label">Gender</InputLabel>
+          <Select
+            labelId="gender-label"
+            value={gender}
+            label="Gender"
+            onChange={(e) => setGender(e.target.value)}
+            required
+          >
+            <MenuItem value="male">Male</MenuItem>
+            <MenuItem value="female">Female</MenuItem>
+            <MenuItem value="other">Other</MenuItem>
+            <MenuItem value="other">trans</MenuItem>
+
+            <MenuItem value="prefer-not-to-say">Prefer not to say</MenuItem>
+          </Select>
+        </FormControl>
 
         {error && (
           <Typography 

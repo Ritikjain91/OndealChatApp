@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, X, MessageCircle, Video, Users, Shield, Star, Globe } from 'lucide-react';
+import { Menu, X, MessageCircle, Video,  Shield, Star, Globe } from 'lucide-react';
 
 // Animation keyframes using Tailwind's animate classes
 const FloatingEmoji = ({ emoji, className, delay = 0 }) => {
@@ -563,7 +563,8 @@ const Frontpage = () => {
               </div>
               
               <p className="text-gray-500 mb-4">
-                © 2024 ChitChat - Connect with strangers, make friends worldwide
+                © 2024 Ondeal ChatApp
+ - Connect with strangers, make friends worldwide
               </p>
               
               <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-400">
