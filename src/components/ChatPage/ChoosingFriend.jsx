@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { MessageSquare, Users, Camera, Crown, Instagram } from 'lucide-react';
+import { MessageSquare, Users,  Crown, Instagram, Menu, X } from 'lucide-react';
+import { useNavigate } from 'react-router';
+
 
 const ChatApp = () => {
   const [selectedGender, setSelectedGender] = useState('Both');
   const [selectedInterests, setSelectedInterests] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const interests = ['Fashion', 'Gardening', 'Pets'];
+const navigate =useNavigate();
 
   const toggleInterest = (interest) => {
     setSelectedInterests(prev => 
@@ -15,10 +19,38 @@ const ChatApp = () => {
     );
   };
 
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
+
+  const StartnewChat=()=>{
+    navigate('/chatapp')
+  }
   return (
-    <div className="min-h-screen  bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white flex">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white flex relative">
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Left Sidebar */}
-      <div className="w-64 bg-gray-900/80 backdrop-blur-sm border-r border-gray-700">
+      <div className={`
+        fixed lg:static inset-y-0 left-0 z-50
+        w-64 bg-gray-900/90 backdrop-blur-sm border-r border-gray-700
+        transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        {/* Mobile Close Button */}
+        <button
+          onClick={toggleSidebar}
+          className="lg:hidden absolute top-4 right-4 text-gray-400 hover:text-white"
+        >
+          <X size={20} />
+        </button>
+
         {/* Header */}
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center space-x-2">
@@ -52,7 +84,7 @@ const ChatApp = () => {
         </div>
 
         {/* Direct Messages */}
-        <div className="px-4">
+        <div className="px-4 flex-1">
           <h3 className="text-sm font-medium text-gray-400 mb-3">DIRECT MESSAGES</h3>
           <div className="flex flex-col items-center text-gray-500 py-8">
             <div className="w-16 h-16 bg-gray-800 rounded-lg flex items-center justify-center mb-3">
@@ -82,26 +114,49 @@ const ChatApp = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-h-screen">
         {/* Top Bar */}
-        <div className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 px-6 py-3">
-          <h1 className="text-xl font-bold">New Chat</h1>
+        <div className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 px-4 sm:px-6 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={toggleSidebar}
+              className="lg:hidden text-gray-400 hover:text-white"
+            >
+              <Menu size={20} />
+            </button>
+            <h1 className="text-xl font-bold">New Chat</h1>
+          </div>
+
+          {/* Top Right Icons */}
+          <div className="flex items-center space-x-4">
+            <button className="text-gray-400 hover:text-white">
+              <Users size={20} />
+            </button>
+            <button className="text-gray-400 hover:text-white">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
+              </svg>
+            </button>
+            <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
+              <span className="text-sm font-bold">?</span>
+            </div>
+          </div>
         </div>
 
         {/* Center Content */}
-        <div className="flex-1 flex flex-col items-center justify-center p-8">
+        <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8 overflow-y-auto">
           {/* Logo */}
-          <div className="mb-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4">
-              <MessageSquare size={32} className="text-white" />
+          <div className="mb-6 sm:mb-8 text-center">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mb-4 mx-auto">
+              <MessageSquare size={24} className="text-white sm:w-8 sm:h-8" />
             </div>
-            <h1 className="text-4xl font-bold text-center">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-center">
               Ondeal ChatApp
             </h1>
           </div>
 
           {/* Social Icons */}
-          <div className="flex space-x-4 mb-8">
+          <div className="flex space-x-4 mb-6 sm:mb-8">
             <button className="w-10 h-10 bg-gray-800 rounded-lg flex items-center justify-center hover:bg-gray-700 transition-colors">
               <Instagram size={20} />
             </button>
@@ -118,10 +173,10 @@ const ChatApp = () => {
           </div>
 
           {/* Interests Section */}
-          <div className="w-full max-w-2xl mb-8">
-            <div className="bg-gray-800/50 rounded-xl p-6 border border-gray-700">
+          <div className="w-full max-w-2xl mb-6 sm:mb-8">
+            <div className="bg-gray-800/50 rounded-xl p-4 sm:p-6 border border-gray-700">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">
+                <h3 className="text-base sm:text-lg font-semibold">
                   Your Interests <span className="text-green-400 text-sm">(ON)</span>
                 </h3>
                 <button className="text-blue-400 hover:text-blue-300 text-sm">Manage</button>
@@ -150,9 +205,9 @@ const ChatApp = () => {
           </div>
 
           {/* Gender Filter */}
-          <div className="w-full max-w-2xl mb-8">
-            <h3 className="text-lg font-semibold mb-4">Gender Filter:</h3>
-            <div className="flex space-x-4">
+          <div className="w-full max-w-2xl mb-6 sm:mb-8">
+            <h3 className="text-base sm:text-lg font-semibold mb-4">Gender Filter:</h3>
+            <div className="grid grid-cols-3 gap-3 sm:flex sm:space-x-4 sm:gap-0">
               {[
                 { label: 'Male', icon: '👨', premium: false },
                 { label: 'Both', icon: '👥', premium: false },
@@ -161,55 +216,39 @@ const ChatApp = () => {
                 <button
                   key={option.label}
                   onClick={() => setSelectedGender(option.label)}
-                  className={`relative flex flex-col items-center p-4 rounded-xl border-2 transition-all ${
+                  className={`relative flex flex-col items-center p-3 sm:p-4 rounded-xl border-2 transition-all ${
                     selectedGender === option.label
                       ? 'border-blue-500 bg-blue-500/20'
                       : 'border-gray-600 bg-gray-800/50 hover:border-gray-500'
                   }`}
                 >
                   {option.premium && (
-                    <div className="absolute -top-1 -right-1 w-6 h-6 bg-orange-500 rounded-full flex items-center justify-center">
-                      <Crown size={12} className="text-white" />
+                    <div className="absolute -top-1 -right-1 w-5 h-5 sm:w-6 sm:h-6 bg-orange-500 rounded-full flex items-center justify-center">
+                      <Crown size={10} className="text-white sm:w-3 sm:h-3" />
                     </div>
                   )}
-                  <span className="text-2xl mb-2">{option.icon}</span>
-                  <span className="text-sm font-medium">{option.label}</span>
+                  <span className="text-xl sm:text-2xl mb-1 sm:mb-2">{option.icon}</span>
+                  <span className="text-xs sm:text-sm font-medium">{option.label}</span>
                 </button>
               ))}
             </div>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex space-x-4">
-          
-            <button className="flex items-center space-x-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors">
+          <div  className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4 w-full max-w-md">
+            <button onClick={StartnewChat} className="flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors">
               <MessageSquare size={20} />
-              <span>Start Text Chat</span>
+              <span >Start Text Chat</span>
             </button>
           </div>
 
           {/* Footer Text */}
-          <p className="text-gray-400 text-sm mt-6">
+          <p className="text-gray-400 text-xs sm:text-sm mt-6 text-center px-4">
             Be respectful and follow our{' '}
             <button className="text-blue-400 hover:text-blue-300 underline">
               chat rules
             </button>
           </p>
-        </div>
-
-        {/* Top Right Icons */}
-        <div className="absolute top-4 right-6 flex items-center space-x-4">
-          <button className="text-gray-400 hover:text-white">
-            <Users size={20} />
-          </button>
-          <button className="text-gray-400 hover:text-white">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
-            </svg>
-          </button>
-          <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
-            <span className="text-sm font-bold">?</span>
-          </div>
         </div>
       </div>
     </div>

@@ -21,7 +21,7 @@ const router = createBrowserRouter(
       <Route path="/login" element={<Login />} errorElement={<ErrorPage />} />
       <Route path="/signup" element={<Signup />} errorElement={<ErrorPage />} />
       <Route path="*" element={<ErrorPage />} />
-      <Route path='chatapp' element={<ChatApp/>}  errorElement={<ErrorPage />} />
+      <Route path="/chatapp" element={<ChatApp/>}  errorElement={<ErrorPage />} />
     </>
   )
 );
