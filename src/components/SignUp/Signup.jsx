@@ -64,25 +64,32 @@ const Signup = () => {
   const navigate = useNavigate();
 
   const handleSignup = async (e) => {
-    e.preventDefault();
-    setError('');
+  e.preventDefault();
+  setError('');
 
-    try {
-      const response = await axios.post(
-        'http://localhost:5000/signup',
-        { username, email, password, gender },
-        { withCredentials: true }
-      );
+  console.log('Form data:', { username, email, password: '***', gender });
 
-      if (response.status === 201) {
-        alert('Signup successful! Please login.');
-        navigate('/login');
-      }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Signup failed. Please try again.');
-      console.error('Signup error:', err);
+  try {
+    console.log('Sending signup request...');
+    const response = await axios.post(
+      'http://localhost:5000/signup',
+      { username, email, password, gender },
+      { withCredentials: true }
+    );
+
+    console.log('Signup response:', response);
+
+    if (response.status === 201) {
+      alert('Signup successful! Please login.');
+      navigate('/login');
     }
-  };
+  } catch (err) {
+    console.error('Full error object:', err);
+    console.error('Error response:', err.response);
+    setError(err.response?.data?.message || 'Signup failed. Please try again.');
+  }
+};
+
 
   return (
     <SignupContainer maxWidth={false}>
