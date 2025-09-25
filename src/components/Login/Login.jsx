@@ -62,7 +62,7 @@ const LoginButton = styled(Button)(({ theme }) => ({
 }));
 
 // API base URL - using your deployed backend on Render
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://ondealchatapp.onrender.com';
+const API_BASE_URL = 'https://ondealchatapp.onrender.com';
 
 const Login = () => {
   const [email, setEmail] = useState("");
