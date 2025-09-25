@@ -11,6 +11,10 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+import InputAdornment from '@mui/material/InputAdornment';
+import IconButton from '@mui/material/IconButton';
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 const SignupContainer = styled(Container)(({ theme }) => ({
   minHeight: '100vh',
@@ -61,44 +65,44 @@ const Signup = () => {
   const [password, setPassword] = useState('');
   const [gender, setGender] = useState('');
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleSignup = async (e) => {
-  e.preventDefault();
-  setError('');
+    e.preventDefault();
+    setError('');
 
-  console.log('Form data:', { username, email, password: '***', gender });
+    console.log('Form data:', { username, email, password: '***', gender });
 
-  try {
-    console.log('Sending signup request...');
-    const response = await axios.post(
-      'http://localhost:5000/signup',
-      { username, email, password, gender },
-      { withCredentials: true }
-    );
+    try {
+      console.log('Sending signup request...');
+      const response = await axios.post(
+        'https://ondealchatapp.onrender.com/signup',
+        { username, email, password, gender },
+        { withCredentials: true }
+      );
 
-    console.log('Signup response:', response);
+      console.log('Signup response:', response);
 
-    if (response.status === 201) {
-      alert('Signup successful! Please login.');
-      navigate('/login');
+      if (response.status === 201) {
+        alert('Signup successful! Please login.');
+        navigate('/login');
+      }
+    } catch (err) {
+      console.error('Full error object:', err);
+      console.error('Error response:', err.response);
+      setError(err.response?.data?.message || 'Signup failed. Please try again.');
     }
-  } catch (err) {
-    console.error('Full error object:', err);
-    console.error('Error response:', err.response);
-    setError(err.response?.data?.message || 'Signup failed. Please try again.');
-  }
-};
-
+  };
 
   return (
     <SignupContainer maxWidth={false}>
       <SignupForm component="form" onSubmit={handleSignup}>
-        <Typography 
-          variant="h4" 
-          component="h1" 
-          gutterBottom 
-          sx={{ 
+        <Typography
+          variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{
             textAlign: 'center',
             marginBottom: 4,
             background: 'linear-gradient(45deg, #ffffff 30%, #4ECDC4 70%, #44A08D 90%)',
@@ -110,6 +114,7 @@ const Signup = () => {
           Create Your Account
         </Typography>
 
+        {/* Username */}
         <TextField
           fullWidth
           label="Username"
@@ -121,19 +126,14 @@ const Signup = () => {
             marginBottom: 3,
             '& .MuiOutlinedInput-root': {
               color: 'white',
-              '& fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.5)',
-              },
+              '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
+              '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
             },
-            '& .MuiInputLabel-root': {
-              color: 'rgba(255, 255, 255, 0.7)',
-            },
+            '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
           }}
         />
 
+        {/* Email */}
         <TextField
           fullWidth
           label="Email"
@@ -146,24 +146,19 @@ const Signup = () => {
             marginBottom: 3,
             '& .MuiOutlinedInput-root': {
               color: 'white',
-              '& fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.5)',
-              },
+              '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
+              '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
             },
-            '& .MuiInputLabel-root': {
-              color: 'rgba(255, 255, 255, 0.7)',
-            },
+            '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
           }}
         />
 
+        {/* Password with eye icon toggle */}
         <TextField
           fullWidth
           label="Password"
           variant="outlined"
-          type="password"
+          type={showPassword ? 'text' : 'password'}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
@@ -171,34 +166,39 @@ const Signup = () => {
             marginBottom: 3,
             '& .MuiOutlinedInput-root': {
               color: 'white',
-              '& fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.3)',
-              },
-              '&:hover fieldset': {
-                borderColor: 'rgba(255, 255, 255, 0.5)',
-              },
+              '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
+              '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
             },
-            '& .MuiInputLabel-root': {
-              color: 'rgba(255, 255, 255, 0.7)',
-            },
+            '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
+          }}
+          InputProps={{
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  edge="end"
+                  sx={{ color: 'rgba(255,255,255,0.7)' }}
+                >
+                  {showPassword ? <VisibilityOff /> : <Visibility />}
+                </IconButton>
+              </InputAdornment>
+            ),
           }}
         />
 
-        <FormControl fullWidth sx={{ 
-          marginBottom: 3,
-          '& .MuiInputLabel-root': {
-            color: 'rgba(255, 255, 255, 0.7)',
-          },
-          '& .MuiOutlinedInput-root': {
-            color: 'white',
-            '& fieldset': {
-              borderColor: 'rgba(255, 255, 255, 0.3)',
+        {/* Gender */}
+        <FormControl
+          fullWidth
+          sx={{
+            marginBottom: 3,
+            '& .MuiInputLabel-root': { color: 'rgba(255, 255, 255, 0.7)' },
+            '& .MuiOutlinedInput-root': {
+              color: 'white',
+              '& fieldset': { borderColor: 'rgba(255, 255, 255, 0.3)' },
+              '&:hover fieldset': { borderColor: 'rgba(255, 255, 255, 0.5)' },
             },
-            '&:hover fieldset': {
-              borderColor: 'rgba(255, 255, 255, 0.5)',
-            },
-          },
-        }}>
+          }}
+        >
           <InputLabel id="gender-label">Gender</InputLabel>
           <Select
             labelId="gender-label"
@@ -209,42 +209,36 @@ const Signup = () => {
           >
             <MenuItem value="male">Male</MenuItem>
             <MenuItem value="female">Female</MenuItem>
+            <MenuItem value="trans">Trans</MenuItem>
             <MenuItem value="other">Other</MenuItem>
-            <MenuItem value="other">trans</MenuItem>
-
             <MenuItem value="prefer-not-to-say">Prefer not to say</MenuItem>
           </Select>
         </FormControl>
 
+        {/* Error message */}
         {error && (
-          <Typography 
-            color="error" 
-            sx={{ 
-              marginBottom: 2,
-              textAlign: 'center',
-              color: '#FF6B6B',
-            }}
+          <Typography
+            color="error"
+            sx={{ marginBottom: 2, textAlign: 'center', color: '#FF6B6B' }}
           >
             {error}
           </Typography>
         )}
 
-        <SignupButton type="submit">
-          Sign Up
-        </SignupButton>
+        {/* Signup button */}
+        <SignupButton type="submit">Sign Up</SignupButton>
 
-        <Typography 
-          variant="body2" 
-          sx={{ 
+        {/* Redirect to login */}
+        <Typography
+          variant="body2"
+          sx={{
             marginTop: 3,
             textAlign: 'center',
             color: 'rgba(255, 255, 255, 0.6)',
             '& a': {
               color: '#4ECDC4',
               textDecoration: 'none',
-              '&:hover': {
-                textDecoration: 'underline',
-              },
+              '&:hover': { textDecoration: 'underline' },
             },
           }}
         >
