@@ -10,7 +10,7 @@ import './App.css';
 import ErrorPage from './components/ErrorPage/ErrorPage'; 
 import Chat from './components/ChatPage/ChoosingFriend';
 import Frontpage from './components/FrontPage/Frontpage';
-import ChatApp from './components/ChatPage/chatapp';
+import ChatApp from './components/ChatPage/chatapp.jsx';
 import { AuthProvider, useAuth } from './components/Context/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute.jsx';
 import { useEffect } from 'react';
