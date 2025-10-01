@@ -10,12 +10,12 @@ import './App.css';
 import ErrorPage from './components/ErrorPage/ErrorPage'; 
 import Chat from './components/ChatPage/ChoosingFriend';
 import Frontpage from './components/FrontPage/Frontpage';
-import ChatApp from './components/ChatPage/Chatapp';
+import ChatApp from './components/ChatPage/chatapp.jsx';
 import { AuthProvider, useAuth } from './components/Context/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute.jsx';
 import { useEffect } from 'react';
 
-// Create a wrapper component that uses the auth context
+// Create a wrapper component that uses the augith context
 function AppRoutes() {
   const { currentUser, loading } = useAuth();
 
