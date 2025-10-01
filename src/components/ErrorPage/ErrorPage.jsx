@@ -11,7 +11,7 @@ import {
   Home, 
   Refresh,
   ArrowBack,
-  SentimentDissatisfied
+  ErrorOutline
 } from "@mui/icons-material";
 
 const ErrorPage = () => {
@@ -39,71 +39,129 @@ const ErrorPage = () => {
         alignItems: "center",
         justifyContent: "center",
         py: 4,
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        backgroundColor: "#ffffff",
       }}
     >
       <Box
         sx={{
-          p: { xs: 3, sm: 5 },
           textAlign: "center",
-          borderRadius: 4,
           width: "100%",
-          maxWidth: "500px",
-          background: "rgba(255, 255, 255, 0.95)",
-          backdropFilter: "blur(10px)",
-          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.1)",
-          border: "1px solid rgba(255, 255, 255, 0.2)",
+          maxWidth: "600px",
           position: "relative",
-          overflow: "hidden",
-          '&::before': {
-            content: '""',
-            position: "absolute",
-            top: 0,
-            left: 0,
-            right: 0,
-            height: "4px",
-            background: "linear-gradient(90deg, #667eea, #764ba2)",
-          }
         }}
       >
-        {/* Animated Icon */}
-        <Box 
-          sx={{ 
-            mb: 3,
-            animation: "bounce 2s infinite",
-            "@keyframes bounce": {
-              "0%, 100%": { transform: "translateY(0)" },
-              "50%": { transform: "translateY(-10px)" }
-            }
-          }}
-        >
-          <SentimentDissatisfied 
-            sx={{ 
-              fontSize: 100, 
-              color: "primary.main",
-              opacity: 0.8
-            }} 
-          />
-        </Box>
+        {/* Glitch Effect Container */}
+        <Box sx={{ position: "relative", mb: 4 }}>
+          {/* Main 404 */}
+          <Typography
+            variant="h1"
+            component="h1"
+            sx={{
+              fontSize: { xs: "6rem", sm: "10rem", md: "12rem" },
+              fontWeight: 900,
+              color: "#1a1a1a",
+              mb: 0,
+              lineHeight: 1,
+              fontFamily: '"Helvetica Neue", Arial, sans-serif',
+              letterSpacing: "-0.05em",
+              position: "relative",
+              '&::before': {
+                content: '"404"',
+                position: "absolute",
+                left: "2px",
+                top: "2px",
+                color: "#ff0000",
+                opacity: 0.7,
+                zIndex: -1,
+                animation: "glitch1 2s infinite",
+              },
+              '&::after': {
+                content: '"404"',
+                position: "absolute",
+                left: "-2px",
+                top: "-2px",
+                color: "#00ff00",
+                opacity: 0.7,
+                zIndex: -1,
+                animation: "glitch2 2s infinite",
+              },
+              "@keyframes glitch1": {
+                "0%, 100%": { 
+                  transform: "translate(0)",
+                  opacity: 0.7,
+                },
+                "20%": { 
+                  transform: "translate(-3px, 3px)",
+                  opacity: 0.5,
+                },
+                "40%": { 
+                  transform: "translate(-3px, -3px)",
+                  opacity: 0.8,
+                },
+                "60%": { 
+                  transform: "translate(3px, 3px)",
+                  opacity: 0.6,
+                },
+                "80%": { 
+                  transform: "translate(3px, -3px)",
+                  opacity: 0.7,
+                },
+              },
+              "@keyframes glitch2": {
+                "0%, 100%": { 
+                  transform: "translate(0)",
+                  opacity: 0.7,
+                },
+                "20%": { 
+                  transform: "translate(3px, -3px)",
+                  opacity: 0.6,
+                },
+                "40%": { 
+                  transform: "translate(3px, 3px)",
+                  opacity: 0.8,
+                },
+                "60%": { 
+                  transform: "translate(-3px, -3px)",
+                  opacity: 0.5,
+                },
+                "80%": { 
+                  transform: "translate(-3px, 3px)",
+                  opacity: 0.7,
+                },
+              },
+            }}
+          >
+            404
+          </Typography>
 
-        {/* Error Code with Gradient */}
-        <Typography
-          variant="h1"
-          component="h1"
-          sx={{
-            fontSize: { xs: "3rem", sm: "4rem" },
-            fontWeight: 800,
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            backgroundClip: "text",
-            WebkitBackgroundClip: "text",
-            color: "transparent",
-            mb: 2,
-            fontFamily: '"Monaco", "Consolas", monospace',
-            textShadow: "0 4px 8px rgba(0,0,0,0.1)",
-          }}
-        >
-          404
-        </Typography>
+          {/* Error Icon */}
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              animation: "pulse 2s ease-in-out infinite",
+              "@keyframes pulse": {
+                "0%, 100%": { 
+                  opacity: 0.3,
+                  transform: "translate(-50%, -50%) scale(1)",
+                },
+                "50%": { 
+                  opacity: 0.1,
+                  transform: "translate(-50%, -50%) scale(1.1)",
+                },
+              },
+            }}
+          >
+            <ErrorOutline 
+              sx={{ 
+                fontSize: { xs: 80, sm: 120, md: 150 },
+                color: "#ff0000",
+              }} 
+            />
+          </Box>
+        </Box>
 
         {/* Error Title */}
         <Typography
@@ -112,28 +170,28 @@ const ErrorPage = () => {
           gutterBottom
           sx={{
             fontWeight: 700,
-            color: "text.primary",
+            color: "#1a1a1a",
             mb: 2,
-            fontSize: { xs: "1.5rem", sm: "2rem" },
+            fontSize: { xs: "1.75rem", sm: "2.5rem" },
+            fontFamily: '"Helvetica Neue", Arial, sans-serif',
           }}
         >
-          Oops! Page Not Found
+          Page Not Found
         </Typography>
 
         {/* Error Description */}
         <Typography
           variant="body1"
           sx={{
-            color: "text.secondary",
-            lineHeight: 1.6,
-            mb: 4,
-            fontSize: { xs: "0.9rem", sm: "1rem" },
-            maxWidth: "90%",
+            color: "#666666",
+            lineHeight: 1.8,
+            mb: 5,
+            fontSize: { xs: "1rem", sm: "1.125rem" },
+            maxWidth: "500px",
             mx: "auto",
           }}
         >
-          It seems like the page you're looking for has moved, been removed, 
-          or is temporarily unavailable. Let's get you back on track.
+          The page you are looking for might have been removed, had its name changed, or is temporarily unavailable.
         </Typography>
 
         {/* Action Buttons */}
@@ -145,24 +203,56 @@ const ErrorPage = () => {
             flexWrap: "wrap",
             flexDirection: { xs: "column", sm: "row" },
             alignItems: "center",
+            mb: 4,
           }}
         >
           <Button
             variant="contained"
             size="large"
-            startIcon={<ArrowBack />}
-            onClick={handleGoBack}
+            startIcon={<Home />}
+            onClick={handleGoHome}
             sx={{
-              borderRadius: "50px",
+              borderRadius: "8px",
               px: 4,
               py: 1.5,
               fontWeight: 600,
               textTransform: "none",
-              minWidth: "160px",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              boxShadow: "0 4px 15px rgba(102, 126, 234, 0.3)",
+              minWidth: "180px",
+              backgroundColor: "#1a1a1a",
+              color: "#ffffff",
+              fontSize: "1rem",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)",
               '&:hover': {
-                boxShadow: "0 6px 20px rgba(102, 126, 234, 0.4)",
+                backgroundColor: "#000000",
+                boxShadow: "0 6px 16px rgba(0, 0, 0, 0.2)",
+                transform: "translateY(-2px)",
+              },
+              transition: "all 0.3s ease",
+            }}
+          >
+            Go to Homepage
+          </Button>
+
+          <Button
+            variant="outlined"
+            size="large"
+            startIcon={<ArrowBack />}
+            onClick={handleGoBack}
+            sx={{
+              borderRadius: "8px",
+              px: 4,
+              py: 1.5,
+              fontWeight: 600,
+              textTransform: "none",
+              minWidth: "180px",
+              borderColor: "#1a1a1a",
+              color: "#1a1a1a",
+              fontSize: "1rem",
+              borderWidth: "2px",
+              '&:hover': {
+                borderColor: "#000000",
+                backgroundColor: "#f5f5f5",
+                borderWidth: "2px",
                 transform: "translateY(-2px)",
               },
               transition: "all 0.3s ease",
@@ -170,110 +260,58 @@ const ErrorPage = () => {
           >
             Go Back
           </Button>
-
-          <Button
-            variant="outlined"
-            size="large"
-            startIcon={<Home />}
-            onClick={handleGoHome}
-            sx={{
-              borderRadius: "50px",
-              px: 4,
-              py: 1.5,
-              fontWeight: 600,
-              textTransform: "none",
-              minWidth: "160px",
-              borderColor: "primary.main",
-              color: "primary.main",
-              '&:hover': {
-                borderColor: "primary.dark",
-                backgroundColor: "rgba(102, 126, 234, 0.04)",
-                transform: "translateY(-2px)",
-              },
-              transition: "all 0.3s ease",
-            }}
-          >
-            Home Page
-          </Button>
-
-          <Button
-            variant="text"
-            size="large"
-            startIcon={<Refresh />}
-            onClick={handleRefresh}
-            sx={{
-              borderRadius: "50px",
-              px: 4,
-              py: 1.5,
-              fontWeight: 600,
-              textTransform: "none",
-              minWidth: "160px",
-              color: "text.secondary",
-              '&:hover': {
-                backgroundColor: "rgba(0, 0, 0, 0.04)",
-                transform: "translateY(-2px)",
-              },
-              transition: "all 0.3s ease",
-            }}
-          >
-            Refresh
-          </Button>
         </Box>
 
-        {/* Additional Help Section */}
+        {/* Error Code */}
         <Box
           sx={{
-            mt: 4,
-            p: 3,
-            borderRadius: 2,
-            backgroundColor: "rgba(102, 126, 234, 0.05)",
-            border: "1px solid rgba(102, 126, 234, 0.1)",
+            mt: 6,
+            pt: 4,
+            borderTop: "1px solid #e0e0e0",
           }}
         >
           <Typography
-            variant="body2"
+            variant="caption"
             sx={{
-              color: "text.secondary",
-              mb: 1,
-              fontWeight: 600,
+              color: "#999999",
+              fontFamily: '"Courier New", monospace',
+              fontSize: "0.875rem",
+              letterSpacing: "0.05em",
             }}
           >
-            Need immediate assistance?
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{
-              color: "text.secondary",
-              fontStyle: "italic",
-            }}
-          >
-            Contact support or check our status page for updates
+            ERROR CODE: HTTP 404 NOT FOUND
           </Typography>
         </Box>
 
-        {/* Decorative Elements */}
+        {/* Decorative Lines */}
         <Box
           sx={{
             position: "absolute",
-            top: -50,
-            right: -50,
-            width: 100,
-            height: 100,
-            borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.05) 70%)",
-            zIndex: 0,
+            top: { xs: 20, sm: 40 },
+            left: 0,
+            width: "60px",
+            height: "4px",
+            backgroundColor: "#ff0000",
+            animation: "slideIn 1s ease-out",
+            "@keyframes slideIn": {
+              "0%": { 
+                width: 0,
+              },
+              "100%": { 
+                width: "60px",
+              },
+            },
           }}
         />
         <Box
           sx={{
             position: "absolute",
-            bottom: -30,
-            left: -30,
-            width: 80,
-            height: 80,
-            borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(102,126,234,0.1) 0%, rgba(118,75,162,0.05) 70%)",
-            zIndex: 0,
+            bottom: { xs: 20, sm: 40 },
+            right: 0,
+            width: "60px",
+            height: "4px",
+            backgroundColor: "#1a1a1a",
+            animation: "slideIn 1s ease-out 0.2s backwards",
           }}
         />
       </Box>
