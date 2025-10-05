@@ -285,11 +285,11 @@ const Signup = () => {
         console.log('User in response:', data.user);
         console.log('Token in response:', data.token);
         
-        if (!data.token) {
-          setError("Invalid response from server - missing user or token");
-          setLoading(false);
-          return;
-        }
+        // if (!data.token) {
+        //   setError("Invalid response from server - missing user or token");
+        //   setLoading(false);
+        //   return;
+        // }
         
         // Store both user data and token in localStorage
         localStorage.setItem('user', JSON.stringify(data.user));
