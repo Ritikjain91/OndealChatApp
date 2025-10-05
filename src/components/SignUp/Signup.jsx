@@ -285,7 +285,7 @@ const Signup = () => {
         console.log('User in response:', data.user);
         console.log('Token in response:', data.token);
         
-        if (!data.user || !data.token) {
+        if (!data.token) {
           setError("Invalid response from server - missing user or token");
           setLoading(false);
           return;
