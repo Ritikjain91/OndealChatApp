@@ -241,7 +241,7 @@ const Frontpage = () => {
               
               <div className="flex flex-col sm:flex-row gap-4">
         <button 
-  onClick={() => handleNavigation('/chat')}
+  onClick={() => handleNavigation('/chatwithoutlogin')}
   className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 w-fit pointer-events-auto"
 >
   <MessageCircle className="w-4 h-4 mr-2" />
