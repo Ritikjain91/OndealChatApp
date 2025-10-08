@@ -240,13 +240,13 @@ const Frontpage = () => {
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4">
-                <button 
-                  onClick={() => handleNavigation('/chat')}
-                  className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25"
-                >
-                  <MessageCircle className="w-4 h-4 mr-2" />
-                  Chat Without Login
-                </button>
+        <button 
+  onClick={() => handleNavigation('/chat')}
+  className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 w-fit pointer-events-auto"
+>
+  <MessageCircle className="w-4 h-4 mr-2" />
+  Chat Without Login
+</button>
                 <button 
                   onClick={() => handleNavigation('/login')}
                   className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-105 hover:shadow-xl"

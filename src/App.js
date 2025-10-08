@@ -13,7 +13,8 @@ import Frontpage from './components/FrontPage/Frontpage';
 import ChatApp from './components/ChatPage/chatapp.jsx';
 import { AuthProvider, useAuth } from './components/Context/AuthContext.jsx';
 import ProtectedRoute from './components/ProtectedRoute/ProtectedRoute.jsx';
-import { useEffect } from 'react';
+import Chatwithoutlogin from './components/Chatwithoutlogin Page/Chatwithoutloginpage.jsx';
+
 
 // Create a wrapper component that uses the augith context
 function AppRoutes() {
@@ -64,6 +65,7 @@ const router = createBrowserRouter(
       <Route path="/" element={<Frontpage />} errorElement={<ErrorPage />} />
       <Route path="/login" element={<Login />} errorElement={<ErrorPage />} />
       <Route path="/signup" element={<Signup />} errorElement={<ErrorPage />} />
+        <Route path="/chatwithoutlogin" element={<Chatwithoutlogin />} errorElement={<ErrorPage />} />
       
       {/* Protected Routes - Only accessible when logged in */}
       <Route 
