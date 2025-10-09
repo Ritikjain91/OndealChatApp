@@ -4,7 +4,6 @@ import {
   Send,
   Paperclip,
   Smile,
-  MoreVertical,
   Phone,
   Video,
   X,
@@ -20,10 +19,10 @@ import {
   MonitorOff,
   LogOut,
   Menu,
-  Maximize2,
   MessageCircle,
   UserPlus,
-  Settings
+  Settings,
+  Camera
 } from "lucide-react";
 import { io } from "socket.io-client";
 
@@ -54,6 +53,7 @@ export default function ModernChat() {
   const [callParticipants, setCallParticipants] = useState([]);
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [callStatus, setCallStatus] = useState("");
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -69,6 +69,8 @@ export default function ModernChat() {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
     ]
   };
 
@@ -167,13 +169,17 @@ export default function ModernChat() {
     }
     Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
     peerConnectionsRef.current = {};
+    remoteVideosRef.current = {};
   };
 
   const createPeerConnection = (userId) => {
+    console.log(`🔄 Creating peer connection for: ${userId}`);
+    
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
+        console.log(`🧊 Sending ICE candidate to: ${userId}`);
         socketRef.current.emit('ice-candidate', {
           candidate: event.candidate,
           to: userId
@@ -182,21 +188,27 @@ export default function ModernChat() {
     };
 
     pc.ontrack = (event) => {
-      if (remoteVideosRef.current[userId]) {
-        remoteVideosRef.current[userId].srcObject = event.streams[0];
+      console.log(`🎥 Received remote track from: ${userId}`, event.streams[0]);
+      if (event.streams && event.streams[0]) {
+        const remoteVideo = remoteVideosRef.current[userId];
+        if (remoteVideo) {
+          remoteVideo.srcObject = event.streams[0];
+          console.log(`✅ Video stream set for: ${userId}`);
+          setCallStatus("Connected");
+        }
       }
     };
 
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        handleRemoveParticipant(userId);
-      }
+      console.log(`📡 Connection state for ${userId}: ${pc.connectionState}`);
+      setCallStatus(pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1));
     };
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current);
       });
+      console.log(`✅ Added local tracks to peer connection`);
     }
 
     peerConnectionsRef.current[userId] = pc;
@@ -231,7 +243,7 @@ export default function ModernChat() {
       socketRef.current = socket;
 
       socket.on("connect", () => {
-        console.log("Socket connected:", socket.id);
+        console.log("✅ Socket connected:", socket.id);
         if (user && user._id) {
           socket.emit("register", user._id);
           console.log("Registered user with socket:", user._id);
@@ -239,7 +251,7 @@ export default function ModernChat() {
       });
       
       socket.on("connect_error", (error) => {
-        console.error("Socket connection error:", error);
+        console.error("❌ Socket connection error:", error);
         if (error.message.includes("auth") || error.message.includes("jwt")) {
           console.error("Authentication failed - invalid token");
           localStorage.removeItem("token");
@@ -314,12 +326,14 @@ export default function ModernChat() {
 
       // Call signaling events
       socket.on("incoming-call", ({ from, callType: type, roomId }) => {
+        console.log("📞 Incoming call from:", from);
         const caller = users.find(u => u._id === from) || { _id: from, username: "Unknown" };
         setIncomingCall({ caller, callType: type, roomId });
       });
 
       socket.on("call-accepted", async ({ from, roomId }) => {
-        setInCall(true);
+        console.log("✅ Call accepted by:", from);
+        setCallStatus("Connecting...");
         const user = users.find(u => u._id === from);
         if (user) {
           setCallParticipants(prev => [...prev, user]);
@@ -327,15 +341,18 @@ export default function ModernChat() {
       });
 
       socket.on("call-rejected", ({ from }) => {
+        console.log("❌ Call rejected by:", from);
         alert("Call was rejected");
         endCall();
       });
 
       socket.on("call-ended", ({ from }) => {
+        console.log("📞 Call ended by:", from);
         endCall();
       });
 
       socket.on("user-joined-call", async ({ userId, roomId }) => {
+        console.log("👤 User joined call:", userId);
         const user = users.find(u => u._id === userId);
         if (user && !callParticipants.find(p => p._id === userId)) {
           setCallParticipants(prev => [...prev, user]);
@@ -353,38 +370,55 @@ export default function ModernChat() {
       });
 
       socket.on("user-left-call", ({ userId }) => {
+        console.log("👤 User left call:", userId);
         handleRemoveParticipant(userId);
       });
 
       socket.on("webrtc-offer", async ({ offer, from, roomId }) => {
-        const pc = createPeerConnection(from);
-        await pc.setRemoteDescription(new RTCSessionDescription(offer));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        
-        socket.emit('webrtc-answer', {
-          answer,
-          to: from,
-          roomId
-        });
+        console.log("📨 Received WebRTC offer from:", from);
+        try {
+          const pc = createPeerConnection(from);
+          await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          socket.emit('webrtc-answer', {
+            answer,
+            to: from,
+            roomId
+          });
+        } catch (error) {
+          console.error("❌ Error handling offer:", error);
+        }
       });
 
       socket.on("webrtc-answer", async ({ answer, from }) => {
+        console.log("📨 Received WebRTC answer from:", from);
         const pc = peerConnectionsRef.current[from];
         if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(answer));
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log("✅ Remote description set for:", from);
+          } catch (error) {
+            console.error("❌ Error setting remote description:", error);
+          }
         }
       });
 
       socket.on("ice-candidate", async ({ candidate, from }) => {
+        console.log("🧊 Received ICE candidate from:", from);
         const pc = peerConnectionsRef.current[from];
-        if (pc) {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate));
+        if (pc && candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (error) {
+            console.error("❌ Error adding ICE candidate:", error);
+          }
         }
       });
 
     } catch (error) {
-      console.error("Failed to initialize socket:", error);
+      console.error("❌ Failed to initialize socket:", error);
     }
   };
 
@@ -571,16 +605,42 @@ export default function ModernChat() {
     if (!selectedUser || !currentUser) return;
 
     try {
+      console.log("🎬 Starting call...");
+      setCallStatus("Starting call...");
+
       const constraints = {
-        audio: true,
-        video: type === 'video'
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        },
+        video: type === 'video' ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } : false
       };
 
+      console.log("📹 Requesting media with constraints:", constraints);
+      
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
 
-      if (localVideoRef.current) {
+      console.log("✅ Media stream obtained:", {
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length
+      });
+
+      // Set local video stream with proper error handling
+      if (type === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+        
+        // Wait for video to load metadata and play
+        localVideoRef.current.onloadedmetadata = () => {
+          localVideoRef.current.play().catch(error => {
+            console.error("❌ Error playing video:", error);
+          });
+        };
+        
+        console.log("🎥 Local video stream set");
       }
 
       const roomId = `${currentUser._id}-${selectedUser._id}-${Date.now()}`;
@@ -588,6 +648,7 @@ export default function ModernChat() {
       setCallType(type);
       setInCall(true);
       setCallParticipants([selectedUser]);
+      setCallStatus("Calling...");
 
       if (socketRef.current) {
         socketRef.current.emit('initiate-call', {
@@ -596,13 +657,15 @@ export default function ModernChat() {
           callType: type,
           roomId
         });
+        console.log("📞 Call initiated to:", selectedUser.username);
       }
 
       createPeerConnection(selectedUser._id);
 
     } catch (error) {
-      console.error("Error starting call:", error);
+      console.error("❌ Error starting call:", error);
       alert("Could not access camera/microphone. Please check permissions.");
+      setCallStatus("Failed to start call");
     }
   };
 
@@ -610,21 +673,37 @@ export default function ModernChat() {
     if (!incomingCall) return;
 
     try {
+      console.log("✅ Accepting call...");
+      setCallStatus("Accepting call...");
+
       const constraints = {
-        audio: true,
-        video: incomingCall.callType === 'video'
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true
+        },
+        video: incomingCall.callType === 'video' ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } : false
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
 
-      if (localVideoRef.current) {
+      console.log("✅ Media stream obtained for call acceptance");
+
+      // Set local video stream
+      if (incomingCall.callType === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+        localVideoRef.current.onloadedmetadata = () => {
+          localVideoRef.current.play().catch(console.error);
+        };
       }
 
       setCallType(incomingCall.callType);
       setInCall(true);
       setCallParticipants([incomingCall.caller]);
+      setCallStatus("Connecting...");
 
       if (socketRef.current) {
         socketRef.current.emit('accept-call', {
@@ -637,13 +716,14 @@ export default function ModernChat() {
           roomId: incomingCall.roomId,
           userId: currentUser._id
         });
+        console.log("✅ Call accepted, joining room:", incomingCall.roomId);
       }
 
       createPeerConnection(incomingCall.caller._id);
       setIncomingCall(null);
 
     } catch (error) {
-      console.error("Error accepting call:", error);
+      console.error("❌ Error accepting call:", error);
       alert("Could not access camera/microphone. Please check permissions.");
       rejectCall();
     }
@@ -663,6 +743,8 @@ export default function ModernChat() {
   };
 
   const endCall = () => {
+    console.log("🛑 Ending call...");
+    
     if (socketRef.current && callParticipants.length > 0) {
       callParticipants.forEach(participant => {
         socketRef.current.emit('end-call', {
@@ -681,24 +763,27 @@ export default function ModernChat() {
     setIsScreenSharing(false);
     setShowChatPanel(false);
     setShowParticipants(false);
+    setCallStatus("");
   };
 
   const toggleMute = () => {
     if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
+      const audioTracks = localStreamRef.current.getAudioTracks();
+      if (audioTracks.length > 0) {
+        audioTracks[0].enabled = !audioTracks[0].enabled;
+        setIsMuted(!audioTracks[0].enabled);
+        console.log(`🔇 Mute: ${!audioTracks[0].enabled}`);
       }
     }
   };
 
   const toggleVideo = () => {
     if (localStreamRef.current) {
-      const videoTrack = localStreamRef.current.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoOff(!videoTrack.enabled);
+      const videoTracks = localStreamRef.current.getVideoTracks();
+      if (videoTracks.length > 0) {
+        videoTracks[0].enabled = !videoTracks[0].enabled;
+        setIsVideoOff(!videoTracks[0].enabled);
+        console.log(`📹 Video: ${!videoTracks[0].enabled ? 'off' : 'on'}`);
       }
     }
   };
@@ -723,7 +808,10 @@ export default function ModernChat() {
       setIsScreenSharing(false);
     } else {
       try {
-        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: { cursor: "always" },
+          audio: true 
+        });
         screenStreamRef.current = screenStream;
 
         const screenTrack = screenStream.getVideoTracks()[0];
@@ -741,8 +829,7 @@ export default function ModernChat() {
 
         setIsScreenSharing(true);
       } catch (error) {
-        console.error("Error sharing screen:", error);
-        alert("Could not share screen. Please check permissions.");
+        console.error("❌ Error sharing screen:", error);
       }
     }
   };
@@ -752,7 +839,8 @@ export default function ModernChat() {
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-lg">Loading...</p>
+          <p className="text-lg font-semibold">Loading Chat...</p>
+          <p className="text-gray-400 mt-2">Please wait a moment</p>
         </div>
       </div>
     );
@@ -762,14 +850,16 @@ export default function ModernChat() {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
         <div className="text-center max-w-md px-4">
-          <Users className="w-16 h-16 mx-auto mb-4 text-purple-400" />
-          <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
-          <p className="text-gray-400 mb-6">Please log in to access the chat</p>
+          <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Welcome Back</h2>
+          <p className="text-gray-400 mb-6">Please log in to continue chatting</p>
           <button
             onClick={() => window.location.href = '/login'}
-            className="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors font-semibold"
+            className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl transition-all transform hover:scale-105 font-semibold shadow-lg"
           >
-            Go to Login
+            Sign In to Continue
           </button>
         </div>
       </div>
@@ -780,26 +870,37 @@ export default function ModernChat() {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
         <div className="text-center max-w-md px-4">
-          <Users className="w-16 h-16 mx-auto mb-4 text-purple-400" />
-          <h2 className="text-2xl font-bold mb-2">Select a User to Chat</h2>
+          <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users className="w-10 h-10 text-white" />
+          </div>
+          <h2 className="text-2xl font-bold mb-2">Select a Chat</h2>
           <p className="text-gray-400 mb-6">Choose from {users.length} available user{users.length !== 1 ? 's' : ''}</p>
-          <div className="space-y-2 max-h-96 overflow-y-auto">
+          <div className="space-y-3 max-h-96 overflow-y-auto">
             {users.map(user => (
               <button
                 key={user._id}
                 onClick={() => setSelectedUser(user)}
-                className="w-full p-4 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600 rounded-lg transition-all flex items-center space-x-3"
+                className="w-full p-4 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600 rounded-xl transition-all flex items-center space-x-3 group hover:border-purple-500/50"
               >
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
-                  {user.username.substring(0, 2).toUpperCase()}
+                <div className="relative">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold group-hover:scale-105 transition-transform">
+                    {user.username.substring(0, 2).toUpperCase()}
+                  </div>
+                  {onlineUsers.includes(user._id) && (
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-gray-900 rounded-full"></div>
+                  )}
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="font-semibold">{user.username}</p>
+                  <p className="font-semibold text-white">{user.username}</p>
                   <p className="text-sm text-gray-400">{user.email}</p>
                 </div>
-                {onlineUsers.includes(user._id) && (
-                  <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-                )}
+                <div className={`px-2 py-1 rounded-full text-xs ${
+                  onlineUsers.includes(user._id) 
+                    ? 'bg-green-500/20 text-green-400' 
+                    : 'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {onlineUsers.includes(user._id) ? 'Online' : 'Offline'}
+                </div>
               </button>
             ))}
           </div>
@@ -811,33 +912,41 @@ export default function ModernChat() {
   const isUserOnline = onlineUsers.includes(selectedUser._id);
 
   return (
-    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative">
+    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative overflow-hidden">
       {/* Incoming Call Modal */}
       {incomingCall && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-gray-900 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl border border-purple-500/30">
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-900 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl border border-purple-500/30">
             <div className="text-center">
-              <div className="w-24 h-24 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 animate-pulse">
+              <div className="w-28 h-28 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6 animate-pulse shadow-2xl">
                 {incomingCall.caller.username.substring(0, 2).toUpperCase()}
               </div>
-              <h3 className="text-2xl font-bold mb-2">{incomingCall.caller.username}</h3>
-              <p className="text-gray-400 mb-6">
-                Incoming {incomingCall.callType === 'video' ? 'video' : 'audio'} call...
-              </p>
+              <h3 className="text-2xl font-bold mb-2 text-white">{incomingCall.caller.username}</h3>
+              <p className="text-gray-300 mb-2">is calling you with</p>
+              <div className="flex items-center justify-center space-x-2 mb-6">
+                {incomingCall.callType === 'video' ? (
+                  <Video className="w-5 h-5 text-purple-400" />
+                ) : (
+                  <Phone className="w-5 h-5 text-purple-400" />
+                )}
+                <p className="text-purple-400 font-semibold">
+                  {incomingCall.callType === 'video' ? 'Video Call' : 'Audio Call'}
+                </p>
+              </div>
               <div className="flex space-x-4">
                 <button
                   onClick={rejectCall}
-                  className="flex-1 py-3 bg-red-600 hover:bg-red-700 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                  className="flex-1 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-lg"
                 >
                   <PhoneOff className="w-5 h-5" />
-                  <span>Decline</span>
+                  <span className="font-semibold">Decline</span>
                 </button>
                 <button
                   onClick={acceptCall}
-                  className="flex-1 py-3 bg-green-600 hover:bg-green-700 rounded-lg transition-colors flex items-center justify-center space-x-2"
+                  className="flex-1 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-lg"
                 >
                   <Phone className="w-5 h-5" />
-                  <span>Accept</span>
+                  <span className="font-semibold">Accept</span>
                 </button>
               </div>
             </div>
@@ -845,44 +954,54 @@ export default function ModernChat() {
         </div>
       )}
 
-      {/* Google Meet Style Call Interface */}
+      {/* Video Call Interface */}
       {inCall && (
         <div className="fixed inset-0 bg-gray-900 z-40 flex flex-col">
           {/* Top Bar */}
-          <div className="flex items-center justify-between px-6 py-3 bg-gray-900/90 backdrop-blur-sm border-b border-gray-700">
+          <div className="flex items-center justify-between px-6 py-4 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700">
             <div className="flex items-center space-x-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
                 {currentUser.username.substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <h3 className="font-semibold text-white">
+                <h3 className="font-semibold text-white text-lg">
                   {selectedUser.username}
                   {callParticipants.length > 1 && ` + ${callParticipants.length - 1} others`}
                 </h3>
-                <p className="text-sm text-gray-400">
-                  {callType === 'video' ? 'Video call' : 'Audio call'} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
+                <div className="flex items-center space-x-2">
+                  <div className={`w-2 h-2 rounded-full ${
+                    callStatus === 'Connected' ? 'bg-green-500' : 
+                    callStatus === 'Connecting' ? 'bg-yellow-500' : 'bg-gray-500'
+                  }`}></div>
+                  <p className="text-sm text-gray-400">
+                    {callType === 'video' ? 'Video call' : 'Audio call'} • {callStatus || 'Connecting...'}
+                  </p>
+                </div>
               </div>
             </div>
             
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setShowParticipants(!showParticipants)}
-                className={`p-2 rounded-lg transition-colors ${
-                  showParticipants ? 'bg-purple-600 text-white' : 'text-gray-400 hover:bg-gray-800'
+                className={`p-3 rounded-xl transition-all ${
+                  showParticipants 
+                    ? 'bg-purple-600 text-white shadow-lg' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                 }`}
               >
                 <Users className="w-5 h-5" />
               </button>
               <button
                 onClick={() => setShowChatPanel(!showChatPanel)}
-                className={`p-2 rounded-lg transition-colors ${
-                  showChatPanel ? 'bg-purple-600 text-white' : 'text-gray-400 hover:bg-gray-800'
+                className={`p-3 rounded-xl transition-all ${
+                  showChatPanel 
+                    ? 'bg-purple-600 text-white shadow-lg' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
                 }`}
               >
                 <MessageCircle className="w-5 h-5" />
               </button>
-              <button className="p-2 text-gray-400 hover:bg-gray-800 rounded-lg transition-colors">
+              <button className="p-3 text-gray-400 hover:bg-gray-800 hover:text-white rounded-xl transition-all">
                 <Settings className="w-5 h-5" />
               </button>
             </div>
@@ -895,14 +1014,14 @@ export default function ModernChat() {
               showChatPanel || showParticipants ? 'lg:w-3/4' : 'w-full'
             }`}>
               {callType === 'video' ? (
-                <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Local Video - Pinned */}
-                  <div className="relative bg-gray-800 rounded-xl overflow-hidden border-2 border-purple-500 group">
+                <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Local Video */}
+                  <div className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-purple-500/50 group shadow-2xl">
                     {isVideoOff ? (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
                         <div className="text-center">
-                          <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
-                            {currentUser.username.substring(0, 2).toUpperCase()}
+                          <div className="w-24 h-24 bg-gray-700 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 shadow-lg">
+                            <Camera className="w-8 h-8" />
                           </div>
                           <p className="text-white font-semibold">Camera Off</p>
                         </div>
@@ -913,34 +1032,37 @@ export default function ModernChat() {
                         autoPlay
                         muted
                         playsInline
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover bg-gray-900"
                       />
                     )}
-                    <div className="absolute bottom-3 left-3 bg-black/70 px-3 py-1 rounded-full text-sm backdrop-blur-sm">
-                      You {isMuted && '🔇'}
+                    <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
+                      <span className="font-semibold">You</span>
+                      {isMuted && <span className="ml-2">🔇</span>}
                     </div>
                     {isScreenSharing && (
-                      <div className="absolute top-3 left-3 bg-blue-600 px-3 py-1 rounded-full text-xs backdrop-blur-sm">
-                        Sharing Screen
+                      <div className="absolute top-4 left-4 bg-blue-600 px-3 py-1 rounded-full text-xs backdrop-blur-sm border border-blue-400/50">
+                        🖥️ Sharing Screen
                       </div>
                     )}
                   </div>
 
                   {/* Remote Videos */}
                   {callParticipants.map(participant => (
-                    <div key={participant._id} className="relative bg-gray-800 rounded-xl overflow-hidden border-2 border-gray-600 group hover:border-purple-500 transition-colors">
+                    <div key={participant._id} className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-gray-600 group hover:border-purple-500/50 transition-all duration-300 shadow-2xl">
                       <video
-                        ref={el => remoteVideosRef.current[participant._id] = el}
+                        ref={el => {
+                          remoteVideosRef.current[participant._id] = el;
+                        }}
                         autoPlay
                         playsInline
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-cover bg-gray-900"
                       />
-                      <div className="absolute bottom-3 left-3 bg-black/70 px-3 py-1 rounded-full text-sm backdrop-blur-sm">
-                        {participant.username}
+                      <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
+                        <span className="font-semibold">{participant.username}</span>
                       </div>
-                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button className="p-1 bg-black/50 rounded backdrop-blur-sm">
-                          <Maximize2 className="w-4 h-4" />
+                      <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="p-2 bg-black/50 rounded-xl backdrop-blur-sm hover:bg-black/70 transition-all">
+                          <Settings className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -949,24 +1071,30 @@ export default function ModernChat() {
               ) : (
                 <div className="h-full flex items-center justify-center">
                   <div className="text-center">
-                    <div className="grid grid-cols-2 gap-16 mb-8">
+                    <div className="grid grid-cols-2 gap-16 mb-12">
                       {/* Local Audio Avatar */}
                       <div className="flex flex-col items-center">
-                        <div className="w-32 h-32 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mb-4 shadow-2xl">
+                        <div className="w-36 h-36 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-6 shadow-2xl">
                           {currentUser.username.substring(0, 2).toUpperCase()}
                         </div>
-                        <p className="text-xl font-semibold">You</p>
-                        <p className="text-gray-400">{isMuted ? 'Muted' : 'Speaking'}</p>
+                        <p className="text-2xl font-semibold mb-2">You</p>
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-2 h-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                          <p className="text-gray-400">{isMuted ? 'Muted' : 'Speaking'}</p>
+                        </div>
                       </div>
 
                       {/* Remote Audio Avatar */}
                       {callParticipants.map(participant => (
                         <div key={participant._id} className="flex flex-col items-center">
-                          <div className="w-32 h-32 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mb-4 shadow-2xl animate-pulse">
+                          <div className="w-36 h-36 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-6 shadow-2xl animate-pulse">
                             {participant.username.substring(0, 2).toUpperCase()}
                           </div>
-                          <p className="text-xl font-semibold">{participant.username}</p>
-                          <p className="text-gray-400">Connected</p>
+                          <p className="text-2xl font-semibold mb-2">{participant.username}</p>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
+                            <p className="text-gray-400">Connected</p>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -977,23 +1105,32 @@ export default function ModernChat() {
 
             {/* Side Panels */}
             {(showChatPanel || showParticipants) && (
-              <div className="w-full lg:w-1/4 bg-gray-800/50 backdrop-blur-sm border-l border-gray-700 flex flex-col">
+              <div className="w-full lg:w-1/4 bg-gray-800/80 backdrop-blur-sm border-l border-gray-700 flex flex-col">
                 {showParticipants && (
-                  <div className="flex-1 p-4">
-                    <h4 className="font-semibold mb-4">Participants ({callParticipants.length + 1})</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center space-x-3 p-2 bg-gray-700/50 rounded-lg">
-                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                  <div className="flex-1 p-6">
+                    <h4 className="font-semibold text-lg mb-6 flex items-center space-x-2">
+                      <Users className="w-5 h-5" />
+                      <span>Participants ({callParticipants.length + 1})</span>
+                    </h4>
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-xl border border-gray-600/50">
+                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg">
                           {currentUser.username.substring(0, 2).toUpperCase()}
                         </div>
-                        <span className="text-sm">You {isMuted && '(Muted)'}</span>
+                        <div className="flex-1">
+                          <p className="font-semibold">You</p>
+                          <p className="text-sm text-gray-400">{isMuted ? 'Muted' : 'Unmuted'}</p>
+                        </div>
                       </div>
                       {callParticipants.map(participant => (
-                        <div key={participant._id} className="flex items-center space-x-3 p-2 bg-gray-700/50 rounded-lg">
-                          <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                        <div key={participant._id} className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-xl border border-gray-600/50">
+                          <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg">
                             {participant.username.substring(0, 2).toUpperCase()}
                           </div>
-                          <span className="text-sm">{participant.username}</span>
+                          <div className="flex-1">
+                            <p className="font-semibold">{participant.username}</p>
+                            <p className="text-sm text-gray-400">Connected</p>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1002,17 +1139,22 @@ export default function ModernChat() {
                 
                 {showChatPanel && (
                   <div className="flex-1 flex flex-col">
-                    <div className="p-4 border-b border-gray-700">
-                      <h4 className="font-semibold">Chat</h4>
+                    <div className="p-6 border-b border-gray-700">
+                      <h4 className="font-semibold text-lg flex items-center space-x-2">
+                        <MessageCircle className="w-5 h-5" />
+                        <span>Call Chat</span>
+                      </h4>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4">
-                      <div className="space-y-3">
+                    <div className="flex-1 overflow-y-auto p-6">
+                      <div className="space-y-4">
                         {messages.slice(-10).map((message, index) => (
-                          <div key={message.id} className={`p-3 rounded-lg ${
-                            message.sender === "me" ? "bg-purple-600/20 ml-8" : "bg-gray-700/50 mr-8"
+                          <div key={message.id} className={`p-4 rounded-xl ${
+                            message.sender === "me" 
+                              ? "bg-purple-600/20 ml-8 border border-purple-500/30" 
+                              : "bg-gray-700/50 mr-8 border border-gray-600/50"
                           }`}>
-                            <div className="flex items-center space-x-2 mb-1">
-                              <span className="text-sm font-semibold">{message.name}</span>
+                            <div className="flex items-center space-x-3 mb-2">
+                              <span className="font-semibold text-sm">{message.name}</span>
                               <span className="text-xs text-gray-400">{message.time}</span>
                             </div>
                             <p className="text-sm">{message.text}</p>
@@ -1020,14 +1162,14 @@ export default function ModernChat() {
                         ))}
                       </div>
                     </div>
-                    <div className="p-4 border-t border-gray-700">
-                      <div className="flex space-x-2">
+                    <div className="p-6 border-t border-gray-700">
+                      <div className="flex space-x-3">
                         <input
                           type="text"
-                          placeholder="Send a message..."
-                          className="flex-1 px-3 py-2 bg-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                          placeholder="Type a message..."
+                          className="flex-1 px-4 py-3 bg-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 border border-gray-600/50"
                         />
-                        <button className="px-4 py-2 bg-purple-600 rounded-lg text-sm hover:bg-purple-700 transition-colors">
+                        <button className="px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl text-sm font-semibold transition-all transform hover:scale-105 shadow-lg">
                           Send
                         </button>
                       </div>
@@ -1039,81 +1181,81 @@ export default function ModernChat() {
           </div>
 
           {/* Bottom Controls */}
-          <div className="bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 p-6">
-            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-4">
+          <div className="bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 p-8">
+            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-8">
               <button
                 onClick={toggleMute}
-                className={`p-4 rounded-full transition-all ${
+                className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
                   isMuted
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-gray-700 hover:bg-gray-600 text-white'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
+                    : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                 }`}
                 title={isMuted ? 'Unmute' : 'Mute'}
               >
-                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                {isMuted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
               </button>
 
               {callType === 'video' && (
                 <button
                   onClick={toggleVideo}
-                  className={`p-4 rounded-full transition-all ${
+                  className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
                     isVideoOff
-                      ? 'bg-red-600 hover:bg-red-700 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                      ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
+                      : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                   }`}
                   title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
                 >
-                  {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+                  {isVideoOff ? <VideoOff className="w-7 h-7" /> : <Video className="w-7 h-7" />}
                 </button>
               )}
 
               {callType === 'video' && (
                 <button
                   onClick={toggleScreenShare}
-                  className={`p-4 rounded-full transition-all ${
+                  className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
                     isScreenSharing
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
-                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white'
+                      : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                   }`}
                   title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
                 >
-                  {isScreenSharing ? <MonitorOff className="w-6 h-6" /> : <Monitor className="w-6 h-6" />}
+                  {isScreenSharing ? <MonitorOff className="w-7 h-7" /> : <Monitor className="w-7 h-7" />}
                 </button>
               )}
 
-              <button className="p-4 bg-gray-700 hover:bg-gray-600 rounded-full transition-all text-white">
-                <UserPlus className="w-6 h-6" />
+              <button className="p-5 bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 text-white rounded-2xl transition-all transform hover:scale-110 shadow-2xl">
+                <UserPlus className="w-7 h-7" />
               </button>
 
               <button
                 onClick={endCall}
-                className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white"
+                className="p-5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-2xl transition-all transform hover:scale-110 shadow-2xl"
                 title="End call"
               >
-                <PhoneOff className="w-6 h-6" />
+                <PhoneOff className="w-7 h-7" />
               </button>
             </div>
           </div>
         </div>
       )}
 
-    
-      <div className={`w-80 bg-gray-900/80 backdrop-blur-sm border-r border-gray-700 flex flex-col transition-all duration-300 ${
+      {/* User List Sidebar */}
+      <div className={`w-80 bg-gray-900/90 backdrop-blur-sm border-r border-gray-700 flex flex-col transition-all duration-300 ${
         showUserList ? 'translate-x-0' : '-translate-x-full absolute'
       }`}>
-        <div className="p-4 border-b border-gray-700">
+        <div className="p-6 border-b border-gray-700">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Chats</h2>
             <button
               onClick={() => setShowUserList(false)}
-              className="p-2 text-gray-400 hover:text-white rounded-lg transition-colors"
+              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <div className="p-4 space-y-2">
+          <div className="p-4 space-y-3">
             {users.map(user => (
               <button
                 key={user._id}
@@ -1121,22 +1263,22 @@ export default function ModernChat() {
                   setSelectedUser(user);
                   setShowUserList(false);
                 }}
-                className={`w-full p-3 rounded-xl transition-all flex items-center space-x-3 ${
+                className={`w-full p-4 rounded-xl transition-all flex items-center space-x-4 group ${
                   selectedUser._id === user._id
-                    ? 'bg-purple-600/20 border border-purple-500/50'
-                    : 'bg-gray-800/30 hover:bg-gray-700/50 border border-transparent'
+                    ? 'bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/50 shadow-lg'
+                    : 'bg-gray-800/30 hover:bg-gray-700/50 border border-transparent hover:border-gray-600/50'
                 }`}
               >
                 <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                  <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-lg group-hover:scale-105 transition-transform shadow-lg">
                     {user.username.substring(0, 2).toUpperCase()}
                   </div>
                   {onlineUsers.includes(user._id) && (
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-gray-900 rounded-full"></div>
+                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-gray-900 rounded-full shadow-lg"></div>
                   )}
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="font-semibold">{user.username}</p>
+                  <p className="font-semibold text-white text-lg">{user.username}</p>
                   <p className="text-sm text-gray-400">{onlineUsers.includes(user._id) ? 'Online' : 'Offline'}</p>
                 </div>
               </button>
@@ -1148,41 +1290,45 @@ export default function ModernChat() {
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 shadow-lg">
-          <div className="flex items-center justify-between px-6 py-4">
+        <div className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 shadow-2xl">
+          <div className="flex items-center justify-between px-8 py-6">
             <div className="flex items-center space-x-4 flex-1 min-w-0">
               <button
                 onClick={() => setShowUserList(true)}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-colors"
+                className="p-3 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105"
               >
-                <Menu className="w-5 h-5" />
+                <Menu className="w-6 h-6" />
               </button>
 
               <div className="relative">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
+                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-2xl">
                   {selectedUser.username.substring(0, 2).toUpperCase()}
                 </div>
                 {isUserOnline && (
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-gray-900 rounded-full"></div>
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-gray-900 rounded-full shadow-lg"></div>
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
-                <h2 className="text-lg font-semibold text-white truncate">
-                  {selectedUser.username}
-                </h2>
-                <div className="flex items-center space-x-2">
+                <h2 className="text-xl font-semibold text-white truncate">{selectedUser.username}</h2>
+                <div className="flex items-center space-x-3">
                   {isUserOnline && (
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div className="w-3 h-3 bg-green-500 rounded-full shadow-lg"></div>
                   )}
                   <p className="text-sm text-gray-300">
-                    {isTyping ? "typing..." : isUserOnline ? "online" : "offline"}
+                    {isTyping ? (
+                      <span className="text-purple-400 font-semibold">typing...</span>
+                    ) : isUserOnline ? (
+                      <span className="text-green-400">online</span>
+                    ) : (
+                      <span className="text-gray-400">offline</span>
+                    )}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-4">
               {showSearch && (
                 <div className="relative">
                   <input
@@ -1191,53 +1337,53 @@ export default function ModernChat() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search messages..."
-                    className="w-64 px-4 py-2 pl-10 pr-8 border border-gray-600 rounded-full bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm backdrop-blur-sm"
+                    className="w-80 px-5 py-3 pl-12 pr-10 border border-gray-600 rounded-2xl bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm backdrop-blur-sm shadow-lg"
                   />
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   {search && (
                     <button
                       onClick={() => setSearch("")}
-                      className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-5 h-5" />
                     </button>
                   )}
                 </div>
               )}
 
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-3">
                 {!showSearch && (
                   <>
                     <button 
                       onClick={() => startCall('audio')}
-                      className="p-2 text-gray-400 hover:text-blue-400 hover:bg-gray-800/50 rounded-xl transition-colors"
+                      className="p-3 text-gray-400 hover:text-green-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
                       title="Audio call"
                     >
-                      <Phone className="w-5 h-5" />
+                      <Phone className="w-6 h-6" />
                     </button>
                     <button 
                       onClick={() => startCall('video')}
-                      className="p-2 text-gray-400 hover:text-blue-400 hover:bg-gray-800/50 rounded-xl transition-colors"
+                      className="p-3 text-gray-400 hover:text-purple-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
                       title="Video call"
                     >
-                      <Video className="w-5 h-5" />
+                      <Video className="w-6 h-6" />
                     </button>
                   </>
                 )}
 
                 <button
                   onClick={toggleSearch}
-                  className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-colors"
+                  className="p-3 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
                 >
-                  {showSearch ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+                  {showSearch ? <X className="w-6 h-6" /> : <Search className="w-6 h-6" />}
                 </button>
 
                 <button 
                   onClick={handleLogout}
-                  className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-800/50 rounded-xl transition-colors"
+                  className="p-3 text-gray-400 hover:text-red-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
                   title="Logout"
                 >
-                  <LogOut className="w-5 h-5" />
+                  <LogOut className="w-6 h-6" />
                 </button>
               </div>
             </div>
@@ -1245,8 +1391,8 @@ export default function ModernChat() {
         </div>
 
         {search && (
-          <div className="px-6 py-2 bg-blue-900/50 border-b border-blue-700/50 backdrop-blur-sm">
-            <p className="text-sm text-blue-200">
+          <div className="px-8 py-3 bg-gradient-to-r from-blue-900/50 to-purple-900/50 border-b border-blue-700/50 backdrop-blur-sm">
+            <p className="text-sm text-blue-200 font-medium">
               {filteredMessages.length} message{filteredMessages.length !== 1 ? 's' : ''} found for "{search}"
             </p>
           </div>
@@ -1258,10 +1404,10 @@ export default function ModernChat() {
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent"
           style={{
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 58, 138, 0.6) 50%, rgba(15, 23, 42, 0.8) 100%)'
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 58, 138, 0.7) 50%, rgba(15, 23, 42, 0.9) 100%)'
           }}
         >
-          <div className="p-6 space-y-4">
+          <div className="p-8 space-y-6">
             {filteredMessages.map((message, index) => (
               <MessageRow
                 key={message.id}
@@ -1279,18 +1425,18 @@ export default function ModernChat() {
         {showScrollButton && (
           <button
             onClick={scrollToBottom}
-            className="fixed bottom-24 right-6 p-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full shadow-lg transition-all transform hover:scale-105 z-10 backdrop-blur-sm"
+            className="fixed bottom-28 right-8 p-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-2xl shadow-2xl transition-all transform hover:scale-110 z-10 backdrop-blur-sm border border-purple-500/30"
           >
-            <ArrowDown className="w-5 h-5" />
+            <ArrowDown className="w-6 h-6" />
           </button>
         )}
 
         {/* Input */}
-        <div className="bg-gray-900/80 backdrop-blur-sm border-t border-gray-700 shadow-lg">
-          <div className="p-4">
-            <div className="flex items-end space-x-3">
-              <button className="p-2 text-gray-400 hover:text-purple-400 hover:bg-gray-800/50 rounded-xl transition-colors flex-shrink-0">
-                <Paperclip className="w-5 h-5" />
+        <div className="bg-gray-900/80 backdrop-blur-sm border-t border-gray-700 shadow-2xl">
+          <div className="p-6">
+            <div className="flex items-end space-x-4">
+              <button className="p-3 text-gray-400 hover:text-purple-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg">
+                <Paperclip className="w-6 h-6" />
               </button>
 
               <div className="flex-1 relative">
@@ -1300,28 +1446,28 @@ export default function ModernChat() {
                   onKeyDown={onKeyDown}
                   placeholder="Type your message..."
                   rows="1"
-                  className="w-full px-4 py-3 pr-12 border border-gray-600 rounded-2xl bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-base max-h-32 overflow-y-auto backdrop-blur-sm"
+                  className="w-full px-6 py-4 pr-14 border border-gray-600 rounded-2xl bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-base max-h-32 overflow-y-auto backdrop-blur-sm shadow-lg"
                   style={{
-                    minHeight: '44px',
+                    minHeight: '56px',
                     height: 'auto'
                   }}
                 />
               </div>
 
-              <button className="p-2 text-gray-400 hover:text-yellow-400 hover:bg-gray-800/50 rounded-xl transition-colors flex-shrink-0">
-                <Smile className="w-5 h-5" />
+              <button className="p-3 text-gray-400 hover:text-yellow-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg">
+                <Smile className="w-6 h-6" />
               </button>
 
               <button
                 onClick={handleSend}
                 disabled={!value.trim()}
-                className={`p-3 rounded-xl transition-all transform flex-shrink-0 ${
+                className={`p-4 rounded-2xl transition-all transform flex-shrink-0 shadow-2xl ${
                   value.trim()
-                    ? 'bg-purple-600 hover:bg-purple-700 text-white hover:scale-105 shadow-lg'
+                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white hover:scale-105'
                     : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                 }`}
               >
-                <Send className="w-5 h-5" />
+                <Send className="w-6 h-6" />
               </button>
             </div>
           </div>
@@ -1331,20 +1477,19 @@ export default function ModernChat() {
   );
 }
 
-// MessageRow, MessageBubble, and TypingIndicator components remain the same
 function MessageRow({ message, showAvatar }) {
   const isMe = message.sender === "me";
 
   return (
-    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end space-x-3`}>
+    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end space-x-4`}>
       {!isMe && showAvatar && (
-        <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-lg">
+        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-2xl">
           {message.avatar}
         </div>
       )}
 
       {!isMe && !showAvatar && (
-        <div className="w-10 h-10 flex-shrink-0" />
+        <div className="w-12 h-12 flex-shrink-0" />
       )}
 
       <MessageBubble message={message} isMe={isMe} showAvatar={showAvatar} />
@@ -1373,23 +1518,23 @@ function MessageBubble({ message, isMe, showAvatar }) {
       className={`max-w-xs sm:max-w-md md:max-w-lg xl:max-w-xl group ${isMe ? 'order-2' : 'order-1'}`}
     >
       <div
-        className={`relative px-4 py-3 rounded-2xl shadow-lg transition-all duration-200 group-hover:shadow-xl backdrop-blur-sm ${
+        className={`relative px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 group-hover:shadow-2xl backdrop-blur-sm border ${
           isMe
-            ? 'bg-purple-600 text-white ml-auto rounded-br-md'
-            : 'bg-gray-800/70 text-gray-100 mr-auto rounded-bl-md border border-gray-600/50'
+            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white ml-auto rounded-br-lg border-purple-500/30'
+            : 'bg-gray-800/70 text-gray-100 mr-auto rounded-bl-lg border border-gray-600/50'
         }`}
       >
         {!isMe && showAvatar && (
-          <p className="text-xs font-semibold text-gray-300 mb-1">
+          <p className="text-xs font-semibold text-gray-300 mb-2">
             {message.name}
           </p>
         )}
 
-        <p className="text-sm sm:text-base whitespace-pre-wrap leading-relaxed">
+        <p className="text-base whitespace-pre-wrap leading-relaxed">
           {message.text}
         </p>
 
-        <div className="flex items-center justify-end space-x-1 mt-2">
+        <div className="flex items-center justify-end space-x-2 mt-3">
           <span className={`text-xs ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
             {message.time}
           </span>
@@ -1406,14 +1551,14 @@ function MessageBubble({ message, isMe, showAvatar }) {
 
 function TypingIndicator({ avatar }) {
   return (
-    <div className="flex items-end space-x-3">
-      <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-lg">
+    <div className="flex items-end space-x-4">
+      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-2xl">
         {avatar}
       </div>
-      <div className="px-4 py-3 rounded-2xl bg-gray-800/70 text-gray-100 border border-gray-600/50 shadow-lg flex space-x-1">
-        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0s" }}></div>
-        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
+      <div className="px-6 py-4 rounded-2xl bg-gray-800/70 text-gray-100 border border-gray-600/50 shadow-2xl flex space-x-2">
+        <div className="w-3 h-3 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0s" }}></div>
+        <div className="w-3 h-3 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
+        <div className="w-3 h-3 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
       </div>
     </div>
   );
