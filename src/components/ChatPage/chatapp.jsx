@@ -194,6 +194,12 @@ export default function ModernChat() {
         if (remoteVideo) {
           remoteVideo.srcObject = event.streams[0];
           console.log(`✅ Video stream set for: ${userId}`);
+          
+          // Auto-play the video with error handling
+          remoteVideo.play().catch(error => {
+            console.error("❌ Error playing remote video:", error);
+          });
+          
           setCallStatus("Connected");
         }
       }
@@ -204,11 +210,12 @@ export default function ModernChat() {
       setCallStatus(pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1));
     };
 
+    // Add local tracks to peer connection
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current);
+        console.log(`✅ Added ${track.kind} track to peer connection`);
       });
-      console.log(`✅ Added local tracks to peer connection`);
     }
 
     peerConnectionsRef.current[userId] = pc;
@@ -219,6 +226,10 @@ export default function ModernChat() {
     if (peerConnectionsRef.current[userId]) {
       peerConnectionsRef.current[userId].close();
       delete peerConnectionsRef.current[userId];
+    }
+    if (remoteVideosRef.current[userId]) {
+      remoteVideosRef.current[userId].srcObject = null;
+      delete remoteVideosRef.current[userId];
     }
     setCallParticipants(prev => prev.filter(p => p._id !== userId));
   };
@@ -611,11 +622,13 @@ export default function ModernChat() {
       const constraints = {
         audio: {
           echoCancellation: true,
-          noiseSuppression: true
+          noiseSuppression: true,
+          autoGainControl: true
         },
         video: type === 'video' ? {
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 60 }
         } : false
       };
 
@@ -626,19 +639,23 @@ export default function ModernChat() {
 
       console.log("✅ Media stream obtained:", {
         audioTracks: stream.getAudioTracks().length,
-        videoTracks: stream.getVideoTracks().length
+        videoTracks: stream.getVideoTracks().length,
+        videoEnabled: stream.getVideoTracks()[0]?.enabled
       });
 
-      // Set local video stream with proper error handling
+      // Set local video stream with enhanced error handling
       if (type === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         
-        // Wait for video to load metadata and play
-        localVideoRef.current.onloadedmetadata = () => {
+        // Enhanced video loading with multiple event handlers
+        const playVideo = () => {
           localVideoRef.current.play().catch(error => {
-            console.error("❌ Error playing video:", error);
+            console.error("❌ Error playing local video:", error);
           });
         };
+
+        localVideoRef.current.onloadedmetadata = playVideo;
+        localVideoRef.current.oncanplay = playVideo;
         
         console.log("🎥 Local video stream set");
       }
@@ -664,7 +681,17 @@ export default function ModernChat() {
 
     } catch (error) {
       console.error("❌ Error starting call:", error);
-      alert("Could not access camera/microphone. Please check permissions.");
+      
+      if (error.name === 'NotAllowedError') {
+        alert("Camera/microphone access was denied. Please check your browser permissions.");
+      } else if (error.name === 'NotFoundError') {
+        alert("No camera/microphone found. Please check your device connections.");
+      } else if (error.name === 'NotReadableError') {
+        alert("Camera/microphone is already in use by another application.");
+      } else {
+        alert("Could not access camera/microphone. Please check permissions and try again.");
+      }
+      
       setCallStatus("Failed to start call");
     }
   };
@@ -679,11 +706,13 @@ export default function ModernChat() {
       const constraints = {
         audio: {
           echoCancellation: true,
-          noiseSuppression: true
+          noiseSuppression: true,
+          autoGainControl: true
         },
         video: incomingCall.callType === 'video' ? {
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 60 }
         } : false
       };
 
@@ -692,12 +721,16 @@ export default function ModernChat() {
 
       console.log("✅ Media stream obtained for call acceptance");
 
-      // Set local video stream
+      // Set local video stream with enhanced handling
       if (incomingCall.callType === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
-        localVideoRef.current.onloadedmetadata = () => {
+        
+        const playVideo = () => {
           localVideoRef.current.play().catch(console.error);
         };
+
+        localVideoRef.current.onloadedmetadata = playVideo;
+        localVideoRef.current.oncanplay = playVideo;
       }
 
       setCallType(incomingCall.callType);
@@ -836,7 +869,7 @@ export default function ModernChat() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-lg font-semibold">Loading Chat...</p>
@@ -848,7 +881,7 @@ export default function ModernChat() {
 
   if (!currentUser) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
         <div className="text-center max-w-md px-4">
           <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <Users className="w-10 h-10 text-white" />
@@ -868,7 +901,7 @@ export default function ModernChat() {
 
   if (!selectedUser) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
         <div className="text-center max-w-md px-4">
           <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
             <Users className="w-10 h-10 text-white" />
@@ -912,7 +945,7 @@ export default function ModernChat() {
   const isUserOnline = onlineUsers.includes(selectedUser._id);
 
   return (
-    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative overflow-hidden">
+    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
       {/* Incoming Call Modal */}
       {incomingCall && (
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -1033,6 +1066,7 @@ export default function ModernChat() {
                         muted
                         playsInline
                         className="w-full h-full object-cover bg-gray-900"
+                        onError={(e) => console.error("Local video error:", e)}
                       />
                     )}
                     <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
@@ -1052,10 +1086,17 @@ export default function ModernChat() {
                       <video
                         ref={el => {
                           remoteVideosRef.current[participant._id] = el;
+                          if (el && el.srcObject) {
+                            el.play().catch(error => {
+                              console.error("Error playing remote video:", error);
+                            });
+                          }
                         }}
                         autoPlay
                         playsInline
                         className="w-full h-full object-cover bg-gray-900"
+                        onLoadedMetadata={(e) => e.target.play().catch(console.error)}
+                        onError={(e) => console.error("Remote video error:", e)}
                       />
                       <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
                         <span className="font-semibold">{participant.username}</span>
