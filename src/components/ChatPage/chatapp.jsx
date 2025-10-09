@@ -838,20 +838,37 @@ export default function ModernChat() {
       {inCall && (
         <div className="fixed inset-0 bg-black z-40 flex flex-col">
           <div className="flex-1 relative overflow-hidden">
-            {callType === 'video' ? (
+           {callType === 'video' ? (
               <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 p-4">
                 {/* Local Video */}
                 <div className="relative bg-gray-900 rounded-lg overflow-hidden">
-                  <video
-                    ref={localVideoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="w-full h-full object-cover"
-                  />
+                  {isVideoOff ? (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600">
+                      <div className="text-center">
+                        <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center text-white font-bold text-4xl mx-auto mb-4">
+                          {currentUser.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <p className="text-white font-semibold">Camera Off</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <video
+                      ref={localVideoRef}
+                      autoPlay
+                      muted
+                      playsInline
+                      className="w-full h-full object-cover mirror"
+                      style={{ transform: 'scaleX(-1)' }}
+                    />
+                  )}
                   <div className="absolute bottom-2 left-2 bg-black/60 px-3 py-1 rounded-full text-sm">
-                    You {isVideoOff && '(Video Off)'}
+                    You {isMuted && '🔇'}
                   </div>
+                  {isScreenSharing && (
+                    <div className="absolute top-2 left-2 bg-blue-600 px-3 py-1 rounded-full text-xs">
+                      Sharing Screen
+                    </div>
+                  )}
                 </div>
 
                 {/* Remote Videos */}
@@ -869,7 +886,7 @@ export default function ModernChat() {
                   </div>
                 ))}
               </div>
-            ) : (
+            ) :(
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
                   <div className="grid grid-cols-2 gap-8 mb-8">
