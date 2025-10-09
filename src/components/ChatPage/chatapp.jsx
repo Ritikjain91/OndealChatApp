@@ -19,7 +19,11 @@ import {
   Monitor,
   MonitorOff,
   LogOut,
-  Menu
+  Menu,
+  Maximize2,
+  MessageCircle,
+  UserPlus,
+  Settings
 } from "lucide-react";
 import { io } from "socket.io-client";
 
@@ -48,6 +52,8 @@ export default function ModernChat() {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [callParticipants, setCallParticipants] = useState([]);
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -672,6 +678,8 @@ export default function ModernChat() {
     setIsMuted(false);
     setIsVideoOff(false);
     setIsScreenSharing(false);
+    setShowChatPanel(false);
+    setShowParticipants(false);
   };
 
   const toggleMute = () => {
@@ -740,7 +748,7 @@ export default function ModernChat() {
 
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-lg">Loading...</p>
@@ -751,7 +759,7 @@ export default function ModernChat() {
 
   if (!currentUser) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
         <div className="text-center max-w-md px-4">
           <Users className="w-16 h-16 mx-auto mb-4 text-purple-400" />
           <h2 className="text-2xl font-bold mb-2">Authentication Required</h2>
@@ -769,7 +777,7 @@ export default function ModernChat() {
 
   if (!selectedUser) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white">
         <div className="text-center max-w-md px-4">
           <Users className="w-16 h-16 mx-auto mb-4 text-purple-400" />
           <h2 className="text-2xl font-bold mb-2">Select a User to Chat</h2>
@@ -802,7 +810,7 @@ export default function ModernChat() {
   const isUserOnline = onlineUsers.includes(selectedUser._id);
 
   return (
-    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative">
+    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative">
       {/* Incoming Call Modal */}
       {incomingCall && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
@@ -836,110 +844,221 @@ export default function ModernChat() {
         </div>
       )}
 
-      {/* Call Interface */}
+      {/* Google Meet Style Call Interface */}
       {inCall && (
-        <div className="fixed inset-0 bg-black z-40 flex flex-col">
-          <div className="flex-1 relative overflow-hidden">
-            {callType === 'video' ? (
-              <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
-                {/* Local Video */}
-                <div className="relative bg-gray-900 rounded-xl overflow-hidden border-2 border-purple-500/50">
-                  {isVideoOff ? (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600">
-                      <div className="text-center">
-                        <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
+        <div className="fixed inset-0 bg-gray-900 z-40 flex flex-col">
+          {/* Top Bar */}
+          <div className="flex items-center justify-between px-6 py-3 bg-gray-900/90 backdrop-blur-sm border-b border-gray-700">
+            <div className="flex items-center space-x-4">
+              <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                {currentUser.username.substring(0, 2).toUpperCase()}
+              </div>
+              <div>
+                <h3 className="font-semibold text-white">
+                  {selectedUser.username}
+                  {callParticipants.length > 1 && ` + ${callParticipants.length - 1} others`}
+                </h3>
+                <p className="text-sm text-gray-400">
+                  {callType === 'video' ? 'Video call' : 'Audio call'} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowParticipants(!showParticipants)}
+                className={`p-2 rounded-lg transition-colors ${
+                  showParticipants ? 'bg-purple-600 text-white' : 'text-gray-400 hover:bg-gray-800'
+                }`}
+              >
+                <Users className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowChatPanel(!showChatPanel)}
+                className={`p-2 rounded-lg transition-colors ${
+                  showChatPanel ? 'bg-purple-600 text-white' : 'text-gray-400 hover:bg-gray-800'
+                }`}
+              >
+                <MessageCircle className="w-5 h-5" />
+              </button>
+              <button className="p-2 text-gray-400 hover:bg-gray-800 rounded-lg transition-colors">
+                <Settings className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1 flex">
+            {/* Video Grid */}
+            <div className={`flex-1 p-6 transition-all duration-300 ${
+              showChatPanel || showParticipants ? 'lg:w-3/4' : 'w-full'
+            }`}>
+              {callType === 'video' ? (
+                <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Local Video - Pinned */}
+                  <div className="relative bg-gray-800 rounded-xl overflow-hidden border-2 border-purple-500 group">
+                    {isVideoOff ? (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                        <div className="text-center">
+                          <div className="w-20 h-20 bg-gray-700 rounded-full flex items-center justify-center text-white font-bold text-2xl mx-auto mb-4">
+                            {currentUser.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <p className="text-white font-semibold">Camera Off</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                    <div className="absolute bottom-3 left-3 bg-black/70 px-3 py-1 rounded-full text-sm backdrop-blur-sm">
+                      You {isMuted && '🔇'}
+                    </div>
+                    {isScreenSharing && (
+                      <div className="absolute top-3 left-3 bg-blue-600 px-3 py-1 rounded-full text-xs backdrop-blur-sm">
+                        Sharing Screen
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remote Videos */}
+                  {callParticipants.map(participant => (
+                    <div key={participant._id} className="relative bg-gray-800 rounded-xl overflow-hidden border-2 border-gray-600 group hover:border-purple-500 transition-colors">
+                      <video
+                        ref={el => remoteVideosRef.current[participant._id] = el}
+                        autoPlay
+                        playsInline
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-3 left-3 bg-black/70 px-3 py-1 rounded-full text-sm backdrop-blur-sm">
+                        {participant.username}
+                      </div>
+                      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button className="p-1 bg-black/50 rounded backdrop-blur-sm">
+                          <Maximize2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="grid grid-cols-2 gap-16 mb-8">
+                      {/* Local Audio Avatar */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-32 h-32 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mb-4 shadow-2xl">
                           {currentUser.username.substring(0, 2).toUpperCase()}
                         </div>
-                        <p className="text-white font-semibold">Camera Off</p>
+                        <p className="text-xl font-semibold">You</p>
+                        <p className="text-gray-400">{isMuted ? 'Muted' : 'Speaking'}</p>
                       </div>
-                    </div>
-                  ) : (
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                  )}
-                  <div className="absolute bottom-3 left-3 bg-black/70 px-3 py-1 rounded-full text-sm backdrop-blur-sm">
-                    You {isMuted && '🔇'}
-                  </div>
-                  {isScreenSharing && (
-                    <div className="absolute top-3 left-3 bg-blue-600 px-3 py-1 rounded-full text-xs backdrop-blur-sm">
-                      Sharing Screen
-                    </div>
-                  )}
-                </div>
 
-                {/* Remote Videos */}
-                {callParticipants.map(participant => (
-                  <div key={participant._id} className="relative bg-gray-900 rounded-xl overflow-hidden border-2 border-green-500/50">
-                    <video
-                      ref={el => remoteVideosRef.current[participant._id] = el}
-                      autoPlay
-                      playsInline
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute bottom-3 left-3 bg-black/70 px-3 py-1 rounded-full text-sm backdrop-blur-sm">
-                      {participant.username}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="grid grid-cols-2 gap-12 mb-8">
-                    {/* Local Audio Avatar */}
-                    <div className="flex flex-col items-center">
-                      <div className="w-32 h-32 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mb-4 shadow-2xl">
-                        {currentUser.username.substring(0, 2).toUpperCase()}
-                      </div>
-                      <p className="text-xl font-semibold">You</p>
-                      <p className="text-gray-400">{isMuted ? 'Muted' : 'Speaking'}</p>
-                    </div>
-
-                    {/* Remote Audio Avatar */}
-                    {callParticipants.map(participant => (
-                      <div key={participant._id} className="flex flex-col items-center">
-                        <div className="w-32 h-32 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mb-4 shadow-2xl animate-pulse">
-                          {participant.username.substring(0, 2).toUpperCase()}
+                      {/* Remote Audio Avatar */}
+                      {callParticipants.map(participant => (
+                        <div key={participant._id} className="flex flex-col items-center">
+                          <div className="w-32 h-32 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mb-4 shadow-2xl animate-pulse">
+                            {participant.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <p className="text-xl font-semibold">{participant.username}</p>
+                          <p className="text-gray-400">Connected</p>
                         </div>
-                        <p className="text-xl font-semibold">{participant.username}</p>
-                        <p className="text-gray-400">Connected</p>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
                 </div>
+              )}
+            </div>
+
+            {/* Side Panels */}
+            {(showChatPanel || showParticipants) && (
+              <div className="w-full lg:w-1/4 bg-gray-800/50 backdrop-blur-sm border-l border-gray-700 flex flex-col">
+                {showParticipants && (
+                  <div className="flex-1 p-4">
+                    <h4 className="font-semibold mb-4">Participants ({callParticipants.length + 1})</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-3 p-2 bg-gray-700/50 rounded-lg">
+                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                          {currentUser.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <span className="text-sm">You {isMuted && '(Muted)'}</span>
+                      </div>
+                      {callParticipants.map(participant => (
+                        <div key={participant._id} className="flex items-center space-x-3 p-2 bg-gray-700/50 rounded-lg">
+                          <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                            {participant.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <span className="text-sm">{participant.username}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {showChatPanel && (
+                  <div className="flex-1 flex flex-col">
+                    <div className="p-4 border-b border-gray-700">
+                      <h4 className="font-semibold">Chat</h4>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4">
+                      <div className="space-y-3">
+                        {messages.slice(-10).map((message, index) => (
+                          <div key={message.id} className={`p-3 rounded-lg ${
+                            message.sender === "me" ? "bg-purple-600/20 ml-8" : "bg-gray-700/50 mr-8"
+                          }`}>
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="text-sm font-semibold">{message.name}</span>
+                              <span className="text-xs text-gray-400">{message.time}</span>
+                            </div>
+                            <p className="text-sm">{message.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="p-4 border-t border-gray-700">
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          placeholder="Send a message..."
+                          className="flex-1 px-3 py-2 bg-gray-700 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-purple-500"
+                        />
+                        <button className="px-4 py-2 bg-purple-600 rounded-lg text-sm hover:bg-purple-700 transition-colors">
+                          Send
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
 
-          {/* Call Controls */}
+          {/* Bottom Controls */}
           <div className="bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 p-6">
-            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-6">
-              {/* Mute Button */}
+            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-4">
               <button
                 onClick={toggleMute}
                 className={`p-4 rounded-full transition-all ${
                   isMuted
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-gray-700 hover:bg-gray-600'
+                    ? 'bg-red-600 hover:bg-red-700 text-white'
+                    : 'bg-gray-700 hover:bg-gray-600 text-white'
                 }`}
                 title={isMuted ? 'Unmute' : 'Mute'}
               >
                 {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
               </button>
 
-              {/* Video Toggle (only in video calls) */}
               {callType === 'video' && (
                 <button
                   onClick={toggleVideo}
                   className={`p-4 rounded-full transition-all ${
                     isVideoOff
-                      ? 'bg-red-600 hover:bg-red-700'
-                      : 'bg-gray-700 hover:bg-gray-600'
+                      ? 'bg-red-600 hover:bg-red-700 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
                   }`}
                   title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
                 >
@@ -947,14 +1066,13 @@ export default function ModernChat() {
                 </button>
               )}
 
-              {/* Screen Share (only in video calls) */}
               {callType === 'video' && (
                 <button
                   onClick={toggleScreenShare}
                   className={`p-4 rounded-full transition-all ${
                     isScreenSharing
-                      ? 'bg-blue-600 hover:bg-blue-700'
-                      : 'bg-gray-700 hover:bg-gray-600'
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
                   }`}
                   title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
                 >
@@ -962,26 +1080,23 @@ export default function ModernChat() {
                 </button>
               )}
 
-              {/* End Call Button */}
+              <button className="p-4 bg-gray-700 hover:bg-gray-600 rounded-full transition-all text-white">
+                <UserPlus className="w-6 h-6" />
+              </button>
+
               <button
                 onClick={endCall}
-                className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all"
+                className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white"
                 title="End call"
               >
                 <PhoneOff className="w-6 h-6" />
               </button>
             </div>
-
-            {/* Call Info */}
-            <div className="text-center mt-4">
-              <p className="text-sm text-gray-400">
-                {callParticipants.length} participant{callParticipants.length !== 1 ? 's' : ''} in call
-              </p>
-            </div>
           </div>
         </div>
       )}
 
+      {/* Rest of the chat interface remains the same */}
       {/* User List Sidebar */}
       <div className={`w-80 bg-gray-900/80 backdrop-blur-sm border-r border-gray-700 flex flex-col transition-all duration-300 ${
         showUserList ? 'translate-x-0' : '-translate-x-full absolute'
@@ -1143,7 +1258,7 @@ export default function ModernChat() {
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent"
           style={{
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(88, 28, 135, 0.6) 50%, rgba(15, 23, 42, 0.8) 100%)'
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(30, 58, 138, 0.6) 50%, rgba(15, 23, 42, 0.8) 100%)'
           }}
         >
           <div className="p-6 space-y-4">
@@ -1216,6 +1331,7 @@ export default function ModernChat() {
   );
 }
 
+// MessageRow, MessageBubble, and TypingIndicator components remain the same
 function MessageRow({ message, showAvatar }) {
   const isMe = message.sender === "me";
 
