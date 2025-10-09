@@ -234,9 +234,10 @@ export default function ModernChat() {
         console.log("Socket connected:", socket.id);
         if (user && user._id) {
           socket.emit("register", user._id);
+          console.log("Registered user with socket:", user._id);
         }
       });
-
+      
       socket.on("connect_error", (error) => {
         console.error("Socket connection error:", error);
         if (error.message.includes("auth") || error.message.includes("jwt")) {
@@ -1096,8 +1097,7 @@ export default function ModernChat() {
         </div>
       )}
 
-      {/* Rest of the chat interface remains the same */}
-      {/* User List Sidebar */}
+    
       <div className={`w-80 bg-gray-900/80 backdrop-blur-sm border-r border-gray-700 flex flex-col transition-all duration-300 ${
         showUserList ? 'translate-x-0' : '-translate-x-full absolute'
       }`}>
