@@ -20,6 +20,8 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  UserPlus,
+  Settings,
   Camera
 } from "lucide-react";
 import { io } from "socket.io-client";
@@ -49,6 +51,8 @@ export default function ModernChat() {
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [callParticipants, setCallParticipants] = useState([]);
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(false);
   const [callStatus, setCallStatus] = useState("");
 
   const listRef = useRef(null);
@@ -56,8 +60,8 @@ export default function ModernChat() {
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const peerConnectionRef = useRef(null);
+  const remoteVideosRef = useRef({});
+  const peerConnectionsRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const callRoomIdRef = useRef(null);
@@ -65,7 +69,9 @@ export default function ModernChat() {
   const ICE_SERVERS = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
     ]
   };
 
@@ -73,10 +79,14 @@ export default function ModernChat() {
     return localStorage.getItem("token");
   }, []);
 
+  // Memoized fetchUsers to prevent unnecessary re-renders
   const fetchUsers = useCallback(async () => {
     try {
       const token = getToken();
-      if (!token) return;
+      if (!token) {
+        console.error("No token available");
+        return;
+      }
 
       const response = await fetch(`${API_URL}/users`, {
         headers: {
@@ -89,20 +99,28 @@ export default function ModernChat() {
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
-        if (data.length > 0 && !selectedUser) {
+
+        // Only set selectedUser if it's not already set or if the current selected user doesn't exist in new data
+        if (data.length > 0 && (!selectedUser || !data.find(u => u._id === selectedUser._id))) {
           setSelectedUser(data[0]);
         }
+      } else if (response.status === 401) {
+        console.error("Unauthorized - token may be invalid");
+        localStorage.removeItem("token");
+        setCurrentUser(null);
       }
     } catch (error) {
       console.error("Failed to fetch users:", error);
     }
   }, [selectedUser, getToken]);
 
+  // Initialize user and socket
   useEffect(() => {
     const fetchCurrentUser = async () => {
       try {
         const token = getToken();
         if (!token) {
+          console.error("No token found in localStorage");
           setLoading(false);
           return;
         }
@@ -119,6 +137,12 @@ export default function ModernChat() {
           const data = await response.json();
           setCurrentUser(data.user);
           initSocket(token, data.user);
+        } else if (response.status === 401) {
+          console.error("Token invalid or expired");
+          localStorage.removeItem("token");
+          setCurrentUser(null);
+        } else {
+          console.error("Failed to fetch user - status:", response.status);
         }
       } catch (error) {
         console.error("Failed to fetch current user:", error);
@@ -132,86 +156,90 @@ export default function ModernChat() {
     return () => {
       if (socketRef.current) {
         socketRef.current.disconnect();
+        socketRef.current = null;
       }
       cleanupMediaStreams();
     };
   }, [getToken]);
 
-  const cleanupMediaStreams = () => {
+  // Cleanup media streams function
+  const cleanupMediaStreams = useCallback(() => {
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        track.stop();
-        track.enabled = false;
-      });
+      localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
     }
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach(track => track.stop());
       screenStreamRef.current = null;
     }
-    if (peerConnectionRef.current) {
-      peerConnectionRef.current.close();
-      peerConnectionRef.current = null;
-    }
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
-    }
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = null;
-    }
-  };
+    Object.values(peerConnectionsRef.current).forEach(pc => pc.close());
+    peerConnectionsRef.current = {};
+    remoteVideosRef.current = {};
+    callRoomIdRef.current = null;
+  }, []);
 
-  const createPeerConnection = () => {
-    console.log("🔄 Creating peer connection...");
+  // Create peer connection
+  const createPeerConnection = useCallback((userId) => {
+    console.log(`🔄 Creating peer connection for: ${userId}`);
     
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
-        console.log("🧊 Sending ICE candidate");
+        console.log(`🧊 Sending ICE candidate to: ${userId}`);
         socketRef.current.emit('ice-candidate', {
           candidate: event.candidate,
-          to: selectedUser._id,
+          to: userId,
           roomId: callRoomIdRef.current
         });
       }
     };
 
     pc.ontrack = (event) => {
-      console.log("🎥 Received remote track", event.streams[0]);
+      console.log(`🎥 Received remote track from: ${userId}`, event.streams[0]);
       if (event.streams && event.streams[0]) {
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = event.streams[0];
-          remoteVideoRef.current.play().catch(e => console.log('Remote video play error:', e));
-        }
+        remoteVideosRef.current[userId] = event.streams[0];
+        console.log(`✅ Remote stream stored for: ${userId}`);
+        
+        // Force UI update to show remote video
+        setCallParticipants(prev => [...prev]);
         setCallStatus("Connected");
       }
     };
 
     pc.onconnectionstatechange = () => {
-      console.log("📡 Connection state:", pc.connectionState);
+      console.log(`📡 Connection state for ${userId}: ${pc.connectionState}`);
       setCallStatus(pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1));
-      
-      if (pc.connectionState === 'connected') {
-        console.log("✅ Peer connection established!");
-      } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        console.log("❌ Peer connection failed");
-        endCall();
-      }
     };
 
+    pc.oniceconnectionstatechange = () => {
+      console.log(`🧊 ICE connection state for ${userId}: ${pc.iceConnectionState}`);
+    };
+
+    // Add local tracks to peer connection
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current);
+        if (localStreamRef.current) {
+          pc.addTrack(track, localStreamRef.current);
+          console.log(`✅ Added ${track.kind} track to peer connection`);
+        }
       });
     }
 
-    peerConnectionRef.current = pc;
+    peerConnectionsRef.current[userId] = pc;
     return pc;
-  };
+  }, []);
 
-  const initSocket = (token, user) => {
-    if (socketRef.current) return;
+  // Initialize socket connection
+  const initSocket = useCallback((token, user) => {
+    if (socketRef.current) {
+      return;
+    }
+
+    if (!token) {
+      console.warn("No token available for socket connection");
+      return;
+    }
 
     try {
       const socket = io(SOCKET_URL, {
@@ -226,16 +254,21 @@ export default function ModernChat() {
         console.log("✅ Socket connected:", socket.id);
         if (user && user._id) {
           socket.emit("register", user._id);
+          console.log("Registered user with socket:", user._id);
         }
       });
       
       socket.on("connect_error", (error) => {
         console.error("❌ Socket connection error:", error);
+        if (error.message.includes("auth") || error.message.includes("jwt")) {
+          console.error("Authentication failed - invalid token");
+          localStorage.removeItem("token");
+          setCurrentUser(null);
+        }
       });
 
-      socket.on("onlineUsers", (users) => {
-        setOnlineUsers(users);
-        fetchUsers();
+      socket.on("disconnect", (reason) => {
+        console.log("Socket disconnected:", reason);
       });
 
       socket.on("receiveMessage", (message) => {
@@ -266,7 +299,23 @@ export default function ModernChat() {
               time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             } : msg
           ));
+        } else if (message) {
+          const formatted = {
+            id: message._id,
+            sender: message.sender._id === currentUser?._id ? "me" : "them",
+            name: message.sender.username,
+            avatar: message.sender.username.substring(0, 2).toUpperCase(),
+            text: message.text,
+            time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            status: "delivered"
+          };
+          setMessages(prev => [...prev, formatted]);
         }
+      });
+
+      socket.on("onlineUsers", (users) => {
+        setOnlineUsers(users);
+        fetchUsers();
       });
 
       socket.on("userTyping", ({ userId }) => {
@@ -277,6 +326,13 @@ export default function ModernChat() {
         if (selectedUser && userId === selectedUser._id) setIsTyping(false);
       });
 
+      socket.on("authError", (err) => {
+        console.warn("Socket auth error:", err);
+        localStorage.removeItem("token");
+        setCurrentUser(null);
+      });
+
+      // Call signaling events
       socket.on("incoming-call", ({ from, callType: type, roomId }) => {
         console.log("📞 Incoming call from:", from);
         const caller = users.find(u => u._id === from) || { _id: from, username: "Unknown" };
@@ -286,8 +342,13 @@ export default function ModernChat() {
       socket.on("call-accepted", async ({ from, roomId }) => {
         console.log("✅ Call accepted by:", from);
         setCallStatus("Connecting...");
+        const user = users.find(u => u._id === from);
+        if (user && !callParticipants.find(p => p._id === from)) {
+          setCallParticipants(prev => [...prev, user]);
+        }
         
-        const pc = createPeerConnection();
+        // Create peer connection and send offer to the user who accepted
+        const pc = createPeerConnection(from);
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -297,26 +358,57 @@ export default function ModernChat() {
             to: from,
             roomId
           });
+          console.log("📨 Sent offer to accepted user:", from);
         } catch (error) {
-          console.error("❌ Error creating offer:", error);
+          console.error("❌ Error creating offer for accepted user:", error);
         }
       });
 
       socket.on("call-rejected", ({ from }) => {
         console.log("❌ Call rejected by:", from);
-        alert(`Call rejected by ${users.find(u => u._id === from)?.username || 'User'}`);
+        alert(`${users.find(u => u._id === from)?.username || 'User'} rejected the call`);
         endCall();
       });
 
       socket.on("call-ended", ({ from }) => {
         console.log("📞 Call ended by:", from);
+        alert(`${users.find(u => u._id === from)?.username || 'User'} ended the call`);
         endCall();
       });
 
+      socket.on("user-joined-call", async ({ userId, roomId }) => {
+        console.log("👤 User joined call:", userId);
+        const user = users.find(u => u._id === userId);
+        if (user && !callParticipants.find(p => p._id === userId)) {
+          setCallParticipants(prev => [...prev, user]);
+          
+          // Create offer for the new user
+          const pc = createPeerConnection(userId);
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            
+            socket.emit('webrtc-offer', {
+              offer,
+              to: userId,
+              roomId
+            });
+            console.log("📨 Sent offer to new participant:", userId);
+          } catch (error) {
+            console.error("❌ Error creating offer for new participant:", error);
+          }
+        }
+      });
+
+      socket.on("user-left-call", ({ userId }) => {
+        console.log("👤 User left call:", userId);
+        handleRemoveParticipant(userId);
+      });
+
       socket.on("webrtc-offer", async ({ offer, from, roomId }) => {
-        console.log("📨 Received WebRTC offer");
+        console.log("📨 Received WebRTC offer from:", from);
         try {
-          const pc = createPeerConnection();
+          const pc = createPeerConnection(from);
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
           
           const answer = await pc.createAnswer();
@@ -327,17 +419,19 @@ export default function ModernChat() {
             to: from,
             roomId
           });
+          console.log("📨 Sent WebRTC answer to:", from);
         } catch (error) {
           console.error("❌ Error handling offer:", error);
         }
       });
 
       socket.on("webrtc-answer", async ({ answer, from }) => {
-        console.log("📨 Received WebRTC answer");
-        const pc = peerConnectionRef.current;
+        console.log("📨 Received WebRTC answer from:", from);
+        const pc = peerConnectionsRef.current[from];
         if (pc) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log("✅ Remote description set for:", from);
           } catch (error) {
             console.error("❌ Error setting remote description:", error);
           }
@@ -345,11 +439,12 @@ export default function ModernChat() {
       });
 
       socket.on("ice-candidate", async ({ candidate, from }) => {
-        console.log("🧊 Received ICE candidate");
-        const pc = peerConnectionRef.current;
+        console.log("🧊 Received ICE candidate from:", from);
+        const pc = peerConnectionsRef.current[from];
         if (pc && candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("✅ ICE candidate added for:", from);
           } catch (error) {
             console.error("❌ Error adding ICE candidate:", error);
           }
@@ -359,14 +454,35 @@ export default function ModernChat() {
     } catch (error) {
       console.error("❌ Failed to initialize socket:", error);
     }
-  };
+  }, [currentUser, users, callParticipants, createPeerConnection, fetchUsers, selectedUser]);
 
+  // Handle remove participant
+  const handleRemoveParticipant = useCallback((userId) => {
+    if (peerConnectionsRef.current[userId]) {
+      peerConnectionsRef.current[userId].close();
+      delete peerConnectionsRef.current[userId];
+    }
+    if (remoteVideosRef.current[userId]) {
+      delete remoteVideosRef.current[userId];
+    }
+    setCallParticipants(prev => prev.filter(p => p._id !== userId));
+  }, []);
+
+  // Fetch users when currentUser changes
   useEffect(() => {
     if (currentUser) {
       fetchUsers();
     }
   }, [currentUser, fetchUsers]);
 
+  // Set up interval for fetching users
+  useEffect(() => {
+    if (!currentUser) return;
+    const interval = setInterval(fetchUsers, 10000);
+    return () => clearInterval(interval);
+  }, [currentUser, fetchUsers]);
+
+  // Fetch messages when selected user changes
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedUser || !currentUser) return;
@@ -395,6 +511,10 @@ export default function ModernChat() {
             status: "delivered"
           }));
           setMessages(formattedMessages);
+        } else if (response.status === 401) {
+          console.error("Unauthorized while fetching messages");
+          localStorage.removeItem("token");
+          setCurrentUser(null);
         }
       } catch (error) {
         console.error("Failed to fetch messages:", error);
@@ -404,6 +524,7 @@ export default function ModernChat() {
     fetchMessages();
   }, [selectedUser, currentUser, getToken]);
 
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (listRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = listRef.current;
@@ -425,6 +546,7 @@ export default function ModernChat() {
     }
   };
 
+  // Filter messages based on search
   const filteredMessages = useMemo(() => {
     if (!search.trim()) return messages;
     return messages.filter((m) =>
@@ -433,6 +555,7 @@ export default function ModernChat() {
     );
   }, [messages, search]);
 
+  // Handle sending messages
   const handleSend = async () => {
     const text = value.trim();
     if (!text || !selectedUser || !currentUser) return;
@@ -454,7 +577,7 @@ export default function ModernChat() {
     setMessages(prev => [...prev, tempMessage]);
     setValue("");
 
-    if (socketRef.current?.connected) {
+    if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('sendMessage', {
         senderId: currentUser._id,
         receiverId: selectedUser._id,
@@ -469,9 +592,12 @@ export default function ModernChat() {
         senderId: currentUser._id,
         receiverId: selectedUser._id
       });
+    } else {
+      console.warn("Socket not connected - message not sent");
     }
   };
 
+  // Handle input change with typing indicators
   const handleInputChange = (e) => {
     setValue(e.target.value);
 
@@ -485,10 +611,12 @@ export default function ModernChat() {
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
     typingTimeoutRef.current = setTimeout(() => {
-      socketRef.current?.emit('stopTyping', {
-        senderId: currentUser._id,
-        receiverId: selectedUser._id
-      });
+      if (socketRef.current) {
+        socketRef.current.emit('stopTyping', {
+          senderId: currentUser._id,
+          receiverId: selectedUser._id
+        });
+      }
     }, 2000);
   };
 
@@ -514,6 +642,7 @@ export default function ModernChat() {
     }
   };
 
+  // Handle logout
   const handleLogout = () => {
     localStorage.removeItem("token");
     setCurrentUser(null);
@@ -526,6 +655,7 @@ export default function ModernChat() {
     cleanupMediaStreams();
   };
 
+  // Start a call
   const startCall = async (type) => {
     if (!selectedUser || !currentUser) return;
 
@@ -533,27 +663,46 @@ export default function ModernChat() {
       console.log("🎬 Starting call...");
       setCallStatus("Starting call...");
 
+      // Get user media
       const constraints = {
         audio: {
           echoCancellation: true,
-          noiseSuppression: true
+          noiseSuppression: true,
+          autoGainControl: true
         },
         video: type === 'video' ? {
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 60 }
         } : false
       };
 
+      console.log("📹 Requesting media with constraints:", constraints);
+      
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
 
-      console.log("✅ Media stream obtained");
+      console.log("✅ Media stream obtained:", {
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length,
+        videoEnabled: stream.getVideoTracks()[0]?.enabled
+      });
 
+      // Set local video stream
       if (type === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
-        localVideoRef.current.playsInline = true;
-        localVideoRef.current.play().catch(console.error);
+        
+        const playVideo = () => {
+          localVideoRef.current.play().catch(error => {
+            console.error("❌ Error playing local video:", error);
+          });
+        };
+
+        localVideoRef.current.onloadedmetadata = playVideo;
+        localVideoRef.current.oncanplay = playVideo;
+        
+        console.log("🎥 Local video stream set");
       }
 
       const roomId = `call-${currentUser._id}-${selectedUser._id}-${Date.now()}`;
@@ -571,14 +720,34 @@ export default function ModernChat() {
           callType: type,
           roomId
         });
+        console.log("📞 Call initiated to:", selectedUser.username);
         
+        // Join the call room immediately
         socketRef.current.emit('join-call', {
           roomId: roomId,
           userId: currentUser._id
         });
       }
 
-      createPeerConnection();
+      // Create peer connection and send offer
+      const pc = createPeerConnection(selectedUser._id);
+      
+      // Create and send offer
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        if (socketRef.current) {
+          socketRef.current.emit('webrtc-offer', {
+            offer,
+            to: selectedUser._id,
+            roomId
+          });
+          console.log("📨 WebRTC offer sent to:", selectedUser._id);
+        }
+      } catch (error) {
+        console.error("❌ Error creating/sending offer:", error);
+      }
 
     } catch (error) {
       console.error("❌ Error starting call:", error);
@@ -586,15 +755,18 @@ export default function ModernChat() {
       if (error.name === 'NotAllowedError') {
         alert("Camera/microphone access was denied. Please check your browser permissions.");
       } else if (error.name === 'NotFoundError') {
-        alert("No camera/microphone found.");
+        alert("No camera/microphone found. Please check your device connections.");
+      } else if (error.name === 'NotReadableError') {
+        alert("Camera/microphone is already in use by another application.");
       } else {
-        alert("Could not access camera/microphone. Please check permissions.");
+        alert("Could not access camera/microphone. Please check permissions and try again.");
       }
       
       setCallStatus("Failed to start call");
     }
   };
 
+  // Accept incoming call
   const acceptCall = async () => {
     if (!incomingCall) return;
 
@@ -605,22 +777,32 @@ export default function ModernChat() {
       const constraints = {
         audio: {
           echoCancellation: true,
-          noiseSuppression: true
+          noiseSuppression: true,
+          autoGainControl: true
         },
         video: incomingCall.callType === 'video' ? {
-          width: { ideal: 640 },
-          height: { ideal: 480 }
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          frameRate: { ideal: 30, max: 60 }
         } : false
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
 
+      console.log("✅ Media stream obtained for call acceptance");
+
+      // Set local video stream
       if (incomingCall.callType === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
-        localVideoRef.current.playsInline = true;
-        localVideoRef.current.play().catch(console.error);
+        
+        const playVideo = () => {
+          localVideoRef.current.play().catch(console.error);
+        };
+
+        localVideoRef.current.onloadedmetadata = playVideo;
+        localVideoRef.current.oncanplay = playVideo;
       }
 
       callRoomIdRef.current = incomingCall.roomId;
@@ -641,9 +823,10 @@ export default function ModernChat() {
           roomId: incomingCall.roomId,
           userId: currentUser._id
         });
+        console.log("✅ Call accepted, joining room:", incomingCall.roomId);
       }
 
-      createPeerConnection();
+      // Peer connection will be created when we receive the offer
       setIncomingCall(null);
 
     } catch (error) {
@@ -653,6 +836,7 @@ export default function ModernChat() {
     }
   };
 
+  // Reject incoming call
   const rejectCall = () => {
     if (!incomingCall) return;
 
@@ -666,6 +850,7 @@ export default function ModernChat() {
     setIncomingCall(null);
   };
 
+  // End current call
   const endCall = () => {
     console.log("🛑 Ending call...");
     
@@ -683,29 +868,87 @@ export default function ModernChat() {
     setIsMuted(false);
     setIsVideoOff(false);
     setIsScreenSharing(false);
+    setShowChatPanel(false);
+    setShowParticipants(false);
     setCallStatus("");
   };
 
+  // Toggle mute
   const toggleMute = () => {
     if (localStreamRef.current) {
       const audioTracks = localStreamRef.current.getAudioTracks();
       if (audioTracks.length > 0) {
         audioTracks[0].enabled = !audioTracks[0].enabled;
         setIsMuted(!audioTracks[0].enabled);
+        console.log(`🔇 Mute: ${!audioTracks[0].enabled}`);
       }
     }
   };
 
+  // Toggle video
   const toggleVideo = () => {
     if (localStreamRef.current) {
       const videoTracks = localStreamRef.current.getVideoTracks();
       if (videoTracks.length > 0) {
         videoTracks[0].enabled = !videoTracks[0].enabled;
         setIsVideoOff(!videoTracks[0].enabled);
+        console.log(`📹 Video: ${!videoTracks[0].enabled ? 'off' : 'on'}`);
       }
     }
   };
 
+  // Toggle screen share
+  const toggleScreenShare = async () => {
+    if (isScreenSharing) {
+      // Stop screen sharing
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach(track => track.stop());
+        screenStreamRef.current = null;
+      }
+
+      // Switch back to camera
+      if (localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0];
+        Object.values(peerConnectionsRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender && videoTrack) {
+            sender.replaceTrack(videoTrack);
+          }
+        });
+      }
+
+      setIsScreenSharing(false);
+    } else {
+      try {
+        // Start screen sharing
+        const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
+          video: { cursor: "always" },
+          audio: true 
+        });
+        screenStreamRef.current = screenStream;
+
+        const screenTrack = screenStream.getVideoTracks()[0];
+        
+        // Replace video track in all peer connections
+        Object.values(peerConnectionsRef.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            sender.replaceTrack(screenTrack);
+          }
+        });
+
+        screenTrack.onended = () => {
+          toggleScreenShare();
+        };
+
+        setIsScreenSharing(true);
+      } catch (error) {
+        console.error("❌ Error sharing screen:", error);
+      }
+    }
+  };
+
+  // Loading state
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -718,6 +961,7 @@ export default function ModernChat() {
     );
   }
 
+  // No user state
   if (!currentUser) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -738,6 +982,7 @@ export default function ModernChat() {
     );
   }
 
+  // No selected user state
   if (!selectedUser) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
@@ -790,7 +1035,7 @@ export default function ModernChat() {
         <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center">
           <div className="bg-gray-900 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl border border-purple-500/30">
             <div className="text-center">
-              <div className="w-28 h-28 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6 animate-pulse">
+              <div className="w-28 h-28 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6 animate-pulse shadow-2xl">
                 {incomingCall.caller.username.substring(0, 2).toUpperCase()}
               </div>
               <h3 className="text-2xl font-bold mb-2 text-white">{incomingCall.caller.username}</h3>
@@ -808,14 +1053,14 @@ export default function ModernChat() {
               <div className="flex space-x-4">
                 <button
                   onClick={rejectCall}
-                  className="flex-1 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2"
+                  className="flex-1 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-lg"
                 >
                   <PhoneOff className="w-5 h-5" />
                   <span className="font-semibold">Decline</span>
                 </button>
                 <button
                   onClick={acceptCall}
-                  className="flex-1 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2"
+                  className="flex-1 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-lg"
                 >
                   <Phone className="w-5 h-5" />
                   <span className="font-semibold">Accept</span>
@@ -832,12 +1077,13 @@ export default function ModernChat() {
           {/* Top Bar */}
           <div className="flex items-center justify-between px-6 py-4 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700">
             <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
                 {currentUser.username.substring(0, 2).toUpperCase()}
               </div>
               <div>
                 <h3 className="font-semibold text-white text-lg">
                   {selectedUser.username}
+                  {callParticipants.length > 1 && ` + ${callParticipants.length - 1} others`}
                 </h3>
                 <div className="flex items-center space-x-2">
                   <div className={`w-2 h-2 rounded-full ${
@@ -851,115 +1097,226 @@ export default function ModernChat() {
               </div>
             </div>
             
-            <button
-              onClick={endCall}
-              className="p-3 text-red-400 hover:bg-red-600/20 hover:text-red-300 rounded-xl transition-all"
-            >
-              <PhoneOff className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Main Video Content */}
-          <div className="flex-1 flex p-6">
-            <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Local Video */}
-              <div className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-purple-500/50">
-                {callType === 'video' ? (
-                  isVideoOff ? (
-                    <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                      <div className="text-center">
-                        <div className="w-24 h-24 bg-gray-700 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4">
-                          <Camera className="w-8 h-8" />
-                        </div>
-                        <p className="text-white font-semibold">Camera Off</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <video
-                      ref={localVideoRef}
-                      autoPlay
-                      muted
-                      playsInline
-                      className="w-full h-full object-cover bg-gray-900"
-                    />
-                  )
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                    <div className="text-center">
-                      <div className="w-24 h-24 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4">
-                        {currentUser.username.substring(0, 2).toUpperCase()}
-                      </div>
-                      <p className="text-white font-semibold">Audio Call</p>
-                      <p className="text-gray-400 text-sm mt-2">Microphone {isMuted ? 'Muted' : 'Active'}</p>
-                    </div>
-                  </div>
-                )}
-                <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm">
-                  <span className="font-semibold">You</span>
-                  {isMuted && <span className="ml-2">🔇</span>}
-                </div>
-              </div>
-
-              {/* Remote Video */}
-              <div className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-gray-600">
-                {callType === 'video' ? (
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover bg-gray-900"
-                    onLoadedMetadata={(e) => e.target.play().catch(console.error)}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                    <div className="text-center">
-                      <div className="w-24 h-24 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 animate-pulse">
-                        {selectedUser.username.substring(0, 2).toUpperCase()}
-                      </div>
-                      <p className="text-white font-semibold">{selectedUser.username}</p>
-                      <p className="text-gray-400 text-sm mt-2">Audio Connected</p>
-                    </div>
-                  </div>
-                )}
-                <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm">
-                  <span className="font-semibold">{selectedUser.username}</span>
-                </div>
-              </div>
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => setShowParticipants(!showParticipants)}
+                className={`p-3 rounded-xl transition-all ${
+                  showParticipants 
+                    ? 'bg-purple-600 text-white shadow-lg' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                }`}
+              >
+                <Users className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => setShowChatPanel(!showChatPanel)}
+                className={`p-3 rounded-xl transition-all ${
+                  showChatPanel 
+                    ? 'bg-purple-600 text-white shadow-lg' 
+                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                }`}
+              >
+                <MessageCircle className="w-5 h-5" />
+              </button>
+              <button
+                onClick={endCall}
+                className="p-3 text-red-400 hover:bg-red-600/20 hover:text-red-300 rounded-xl transition-all"
+              >
+                <PhoneOff className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
+          {/* Main Content */}
+          <div className="flex-1 flex">
+            {/* Video Grid */}
+            <div className={`flex-1 p-6 transition-all duration-300 ${
+              showChatPanel || showParticipants ? 'lg:w-3/4' : 'w-full'
+            }`}>
+              {callType === 'video' ? (
+                <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Local Video */}
+                  <div className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-purple-500/50 group shadow-2xl">
+                    {isVideoOff ? (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                        <div className="text-center">
+                          <div className="w-24 h-24 bg-gray-700 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 shadow-lg">
+                            <Camera className="w-8 h-8" />
+                          </div>
+                          <p className="text-white font-semibold">Camera Off</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <video
+                        ref={localVideoRef}
+                        autoPlay
+                        muted
+                        playsInline
+                        className="w-full h-full object-cover bg-gray-900"
+                        onError={(e) => console.error("Local video error:", e)}
+                      />
+                    )}
+                    <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
+                      <span className="font-semibold">You</span>
+                      {isMuted && <span className="ml-2">🔇</span>}
+                    </div>
+                    {isScreenSharing && (
+                      <div className="absolute top-4 left-4 bg-blue-600 px-3 py-1 rounded-full text-xs backdrop-blur-sm border border-blue-400/50">
+                        🖥️ Sharing Screen
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remote Videos */}
+                  {callParticipants.map(participant => (
+                    <div key={participant._id} className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-gray-600 group hover:border-purple-500/50 transition-all duration-300 shadow-2xl">
+                      {remoteVideosRef.current[participant._id] ? (
+                        <video
+                          srcObject={remoteVideosRef.current[participant._id]}
+                          autoPlay
+                          playsInline
+                          className="w-full h-full object-cover bg-gray-900"
+                          onLoadedMetadata={(e) => e.target.play().catch(console.error)}
+                          onError={(e) => console.error("Remote video error:", e)}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                          <div className="text-center">
+                            <div className="w-24 h-24 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 shadow-lg">
+                              {participant.username.substring(0, 2).toUpperCase()}
+                            </div>
+                            <p className="text-white font-semibold">{participant.username}</p>
+                            <p className="text-gray-400 text-sm mt-2">Connecting...</p>
+                          </div>
+                        </div>
+                      )}
+                      <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
+                        <span className="font-semibold">{participant.username}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="grid grid-cols-2 gap-16 mb-12">
+                      {/* Local Audio Avatar */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-36 h-36 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-6 shadow-2xl">
+                          {currentUser.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <p className="text-2xl font-semibold mb-2">You</p>
+                        <div className="flex items-center space-x-2">
+                          <div className={`w-2 h-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                          <p className="text-gray-400">{isMuted ? 'Muted' : 'Speaking'}</p>
+                        </div>
+                      </div>
+
+                      {/* Remote Audio Avatar */}
+                      {callParticipants.map(participant => (
+                        <div key={participant._id} className="flex flex-col items-center">
+                          <div className="w-36 h-36 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-6 shadow-2xl animate-pulse">
+                            {participant.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <p className="text-2xl font-semibold mb-2">{participant.username}</p>
+                          <div className="flex items-center space-x-2">
+                            <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
+                            <p className="text-gray-400">Connected</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Side Panels */}
+            {(showChatPanel || showParticipants) && (
+              <div className="w-full lg:w-1/4 bg-gray-800/80 backdrop-blur-sm border-l border-gray-700 flex flex-col">
+                {showParticipants && (
+                  <div className="flex-1 p-6">
+                    <h4 className="font-semibold text-lg mb-6 flex items-center space-x-2">
+                      <Users className="w-5 h-5" />
+                      <span>Participants ({callParticipants.length + 1})</span>
+                    </h4>
+                    <div className="space-y-4">
+                      <div className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-xl border border-gray-600/50">
+                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg">
+                          {currentUser.username.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold">You</p>
+                          <p className="text-sm text-gray-400">{isMuted ? 'Muted' : 'Unmuted'}</p>
+                        </div>
+                      </div>
+                      {callParticipants.map(participant => (
+                        <div key={participant._id} className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-xl border border-gray-600/50">
+                          <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg">
+                            {participant.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold">{participant.username}</p>
+                            <p className="text-sm text-gray-400">Connected</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Bottom Controls */}
-          <div className="bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 p-6">
-            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-6">
+          <div className="bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 p-8">
+            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-8">
               <button
                 onClick={toggleMute}
-                className={`p-4 rounded-2xl transition-all transform hover:scale-110 ${
+                className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
                   isMuted
-                    ? 'bg-red-600 text-white'
-                    : 'bg-gray-700 text-white hover:bg-gray-600'
+                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
+                    : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                 }`}
+                title={isMuted ? 'Unmute' : 'Mute'}
               >
-                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                {isMuted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
               </button>
 
               {callType === 'video' && (
                 <button
                   onClick={toggleVideo}
-                  className={`p-4 rounded-2xl transition-all transform hover:scale-110 ${
+                  className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
                     isVideoOff
-                      ? 'bg-red-600 text-white'
-                      : 'bg-gray-700 text-white hover:bg-gray-600'
+                      ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
+                      : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                   }`}
+                  title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
                 >
-                  {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+                  {isVideoOff ? <VideoOff className="w-7 h-7" /> : <Video className="w-7 h-7" />}
+                </button>
+              )}
+
+              {callType === 'video' && (
+                <button
+                  onClick={toggleScreenShare}
+                  className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
+                    isScreenSharing
+                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white'
+                      : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
+                  }`}
+                  title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
+                >
+                  {isScreenSharing ? <MonitorOff className="w-7 h-7" /> : <Monitor className="w-7 h-7" />}
                 </button>
               )}
 
               <button
                 onClick={endCall}
-                className="p-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl transition-all transform hover:scale-110"
+                className="p-5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-2xl transition-all transform hover:scale-110 shadow-2xl"
+                title="End call"
               >
-                <PhoneOff className="w-6 h-6" />
+                <PhoneOff className="w-7 h-7" />
               </button>
             </div>
           </div>
