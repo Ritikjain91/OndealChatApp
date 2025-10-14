@@ -20,8 +20,6 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  UserPlus,
-  Settings,
   Camera
 } from "lucide-react";
 import { io } from "socket.io-client";
@@ -79,14 +77,10 @@ export default function ModernChat() {
     return localStorage.getItem("token");
   }, []);
 
-  // Memoized fetchUsers to prevent unnecessary re-renders
   const fetchUsers = useCallback(async () => {
     try {
       const token = getToken();
-      if (!token) {
-        console.error("No token available");
-        return;
-      }
+      if (!token) return;
 
       const response = await fetch(`${API_URL}/users`, {
         headers: {
@@ -100,12 +94,10 @@ export default function ModernChat() {
         const data = await response.json();
         setUsers(data);
 
-        // Only set selectedUser if it's not already set or if the current selected user doesn't exist in new data
         if (data.length > 0 && (!selectedUser || !data.find(u => u._id === selectedUser._id))) {
           setSelectedUser(data[0]);
         }
       } else if (response.status === 401) {
-        console.error("Unauthorized - token may be invalid");
         localStorage.removeItem("token");
         setCurrentUser(null);
       }
@@ -120,7 +112,6 @@ export default function ModernChat() {
       try {
         const token = getToken();
         if (!token) {
-          console.error("No token found in localStorage");
           setLoading(false);
           return;
         }
@@ -138,11 +129,8 @@ export default function ModernChat() {
           setCurrentUser(data.user);
           initSocket(token, data.user);
         } else if (response.status === 401) {
-          console.error("Token invalid or expired");
           localStorage.removeItem("token");
           setCurrentUser(null);
-        } else {
-          console.error("Failed to fetch user - status:", response.status);
         }
       } catch (error) {
         console.error("Failed to fetch current user:", error);
@@ -162,7 +150,7 @@ export default function ModernChat() {
     };
   }, [getToken]);
 
-  // Cleanup media streams function
+  // Cleanup media streams
   const cleanupMediaStreams = useCallback(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -184,6 +172,16 @@ export default function ModernChat() {
     
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
+    // Add local tracks if available
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        if (localStreamRef.current) {
+          pc.addTrack(track, localStreamRef.current);
+          console.log(`✅ Added ${track.kind} track to peer connection`);
+        }
+      });
+    }
+
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
         console.log(`🧊 Sending ICE candidate to: ${userId}`);
@@ -201,7 +199,7 @@ export default function ModernChat() {
         remoteVideosRef.current[userId] = event.streams[0];
         console.log(`✅ Remote stream stored for: ${userId}`);
         
-        // Force UI update to show remote video
+        // Force UI update
         setCallParticipants(prev => [...prev]);
         setCallStatus("Connected");
       }
@@ -212,34 +210,15 @@ export default function ModernChat() {
       setCallStatus(pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1));
     };
 
-    pc.oniceconnectionstatechange = () => {
-      console.log(`🧊 ICE connection state for ${userId}: ${pc.iceConnectionState}`);
-    };
-
-    // Add local tracks to peer connection
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        if (localStreamRef.current) {
-          pc.addTrack(track, localStreamRef.current);
-          console.log(`✅ Added ${track.kind} track to peer connection`);
-        }
-      });
-    }
-
     peerConnectionsRef.current[userId] = pc;
     return pc;
   }, []);
 
   // Initialize socket connection
   const initSocket = useCallback((token, user) => {
-    if (socketRef.current) {
-      return;
-    }
+    if (socketRef.current) return;
 
-    if (!token) {
-      console.warn("No token available for socket connection");
-      return;
-    }
+    if (!token) return;
 
     try {
       const socket = io(SOCKET_URL, {
@@ -260,17 +239,13 @@ export default function ModernChat() {
       
       socket.on("connect_error", (error) => {
         console.error("❌ Socket connection error:", error);
-        if (error.message.includes("auth") || error.message.includes("jwt")) {
-          console.error("Authentication failed - invalid token");
+        if (error.message.includes("auth")) {
           localStorage.removeItem("token");
           setCurrentUser(null);
         }
       });
 
-      socket.on("disconnect", (reason) => {
-        console.log("Socket disconnected:", reason);
-      });
-
+      // Message events
       socket.on("receiveMessage", (message) => {
         if (selectedUser && message.sender._id === selectedUser._id) {
           const formatted = {
@@ -299,17 +274,6 @@ export default function ModernChat() {
               time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
             } : msg
           ));
-        } else if (message) {
-          const formatted = {
-            id: message._id,
-            sender: message.sender._id === currentUser?._id ? "me" : "them",
-            name: message.sender.username,
-            avatar: message.sender.username.substring(0, 2).toUpperCase(),
-            text: message.text,
-            time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            status: "delivered"
-          };
-          setMessages(prev => [...prev, formatted]);
         }
       });
 
@@ -326,28 +290,23 @@ export default function ModernChat() {
         if (selectedUser && userId === selectedUser._id) setIsTyping(false);
       });
 
-      socket.on("authError", (err) => {
-        console.warn("Socket auth error:", err);
-        localStorage.removeItem("token");
-        setCurrentUser(null);
-      });
-
-      // Call signaling events
+      // Call signaling events - FIXED VERSION
       socket.on("incoming-call", ({ from, callType: type, roomId }) => {
         console.log("📞 Incoming call from:", from);
-        const caller = users.find(u => u._id === from) || { _id: from, username: "Unknown" };
+        const caller = users.find(u => u._id === from) || { _id: from, username: "Unknown User" };
         setIncomingCall({ caller, callType: type, roomId });
       });
 
       socket.on("call-accepted", async ({ from, roomId }) => {
         console.log("✅ Call accepted by:", from);
         setCallStatus("Connecting...");
+        
         const user = users.find(u => u._id === from);
         if (user && !callParticipants.find(p => p._id === from)) {
           setCallParticipants(prev => [...prev, user]);
         }
         
-        // Create peer connection and send offer to the user who accepted
+        // Create peer connection for the user who accepted
         const pc = createPeerConnection(from);
         try {
           const offer = await pc.createOffer();
@@ -360,7 +319,7 @@ export default function ModernChat() {
           });
           console.log("📨 Sent offer to accepted user:", from);
         } catch (error) {
-          console.error("❌ Error creating offer for accepted user:", error);
+          console.error("❌ Error creating offer:", error);
         }
       });
 
@@ -374,35 +333,6 @@ export default function ModernChat() {
         console.log("📞 Call ended by:", from);
         alert(`${users.find(u => u._id === from)?.username || 'User'} ended the call`);
         endCall();
-      });
-
-      socket.on("user-joined-call", async ({ userId, roomId }) => {
-        console.log("👤 User joined call:", userId);
-        const user = users.find(u => u._id === userId);
-        if (user && !callParticipants.find(p => p._id === userId)) {
-          setCallParticipants(prev => [...prev, user]);
-          
-          // Create offer for the new user
-          const pc = createPeerConnection(userId);
-          try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            
-            socket.emit('webrtc-offer', {
-              offer,
-              to: userId,
-              roomId
-            });
-            console.log("📨 Sent offer to new participant:", userId);
-          } catch (error) {
-            console.error("❌ Error creating offer for new participant:", error);
-          }
-        }
-      });
-
-      socket.on("user-left-call", ({ userId }) => {
-        console.log("👤 User left call:", userId);
-        handleRemoveParticipant(userId);
       });
 
       socket.on("webrtc-offer", async ({ offer, from, roomId }) => {
@@ -456,30 +386,11 @@ export default function ModernChat() {
     }
   }, [currentUser, users, callParticipants, createPeerConnection, fetchUsers, selectedUser]);
 
-  // Handle remove participant
-  const handleRemoveParticipant = useCallback((userId) => {
-    if (peerConnectionsRef.current[userId]) {
-      peerConnectionsRef.current[userId].close();
-      delete peerConnectionsRef.current[userId];
-    }
-    if (remoteVideosRef.current[userId]) {
-      delete remoteVideosRef.current[userId];
-    }
-    setCallParticipants(prev => prev.filter(p => p._id !== userId));
-  }, []);
-
   // Fetch users when currentUser changes
   useEffect(() => {
     if (currentUser) {
       fetchUsers();
     }
-  }, [currentUser, fetchUsers]);
-
-  // Set up interval for fetching users
-  useEffect(() => {
-    if (!currentUser) return;
-    const interval = setInterval(fetchUsers, 10000);
-    return () => clearInterval(interval);
   }, [currentUser, fetchUsers]);
 
   // Fetch messages when selected user changes
@@ -512,7 +423,6 @@ export default function ModernChat() {
           }));
           setMessages(formattedMessages);
         } else if (response.status === 401) {
-          console.error("Unauthorized while fetching messages");
           localStorage.removeItem("token");
           setCurrentUser(null);
         }
@@ -546,7 +456,6 @@ export default function ModernChat() {
     }
   };
 
-  // Filter messages based on search
   const filteredMessages = useMemo(() => {
     if (!search.trim()) return messages;
     return messages.filter((m) =>
@@ -555,7 +464,6 @@ export default function ModernChat() {
     );
   }, [messages, search]);
 
-  // Handle sending messages
   const handleSend = async () => {
     const text = value.trim();
     if (!text || !selectedUser || !currentUser) return;
@@ -592,12 +500,9 @@ export default function ModernChat() {
         senderId: currentUser._id,
         receiverId: selectedUser._id
       });
-    } else {
-      console.warn("Socket not connected - message not sent");
     }
   };
 
-  // Handle input change with typing indicators
   const handleInputChange = (e) => {
     setValue(e.target.value);
 
@@ -642,7 +547,6 @@ export default function ModernChat() {
     }
   };
 
-  // Handle logout
   const handleLogout = () => {
     localStorage.removeItem("token");
     setCurrentUser(null);
@@ -655,9 +559,12 @@ export default function ModernChat() {
     cleanupMediaStreams();
   };
 
-  // Start a call
+  // Start a call - FIXED VERSION
   const startCall = async (type) => {
-    if (!selectedUser || !currentUser) return;
+    if (!selectedUser || !currentUser) {
+      alert("Please select a user to call");
+      return;
+    }
 
     try {
       console.log("🎬 Starting call...");
@@ -671,9 +578,9 @@ export default function ModernChat() {
           autoGainControl: true
         },
         video: type === 'video' ? {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 }
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
         } : false
       };
 
@@ -684,8 +591,7 @@ export default function ModernChat() {
 
       console.log("✅ Media stream obtained:", {
         audioTracks: stream.getAudioTracks().length,
-        videoTracks: stream.getVideoTracks().length,
-        videoEnabled: stream.getVideoTracks()[0]?.enabled
+        videoTracks: stream.getVideoTracks().length
       });
 
       // Set local video stream
@@ -693,19 +599,14 @@ export default function ModernChat() {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
         
-        const playVideo = () => {
-          localVideoRef.current.play().catch(error => {
-            console.error("❌ Error playing local video:", error);
-          });
-        };
-
-        localVideoRef.current.onloadedmetadata = playVideo;
-        localVideoRef.current.oncanplay = playVideo;
+        localVideoRef.current.play().catch(error => {
+          console.error("❌ Error playing local video:", error);
+        });
         
         console.log("🎥 Local video stream set");
       }
 
-      const roomId = `call-${currentUser._id}-${selectedUser._id}-${Date.now()}`;
+      const roomId = `call-${currentUser._id}-${Date.now()}`;
       callRoomIdRef.current = roomId;
 
       setCallType(type);
@@ -721,32 +622,6 @@ export default function ModernChat() {
           roomId
         });
         console.log("📞 Call initiated to:", selectedUser.username);
-        
-        // Join the call room immediately
-        socketRef.current.emit('join-call', {
-          roomId: roomId,
-          userId: currentUser._id
-        });
-      }
-
-      // Create peer connection and send offer
-      const pc = createPeerConnection(selectedUser._id);
-      
-      // Create and send offer
-      try {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        if (socketRef.current) {
-          socketRef.current.emit('webrtc-offer', {
-            offer,
-            to: selectedUser._id,
-            roomId
-          });
-          console.log("📨 WebRTC offer sent to:", selectedUser._id);
-        }
-      } catch (error) {
-        console.error("❌ Error creating/sending offer:", error);
       }
 
     } catch (error) {
@@ -766,7 +641,7 @@ export default function ModernChat() {
     }
   };
 
-  // Accept incoming call
+  // Accept incoming call - FIXED VERSION
   const acceptCall = async () => {
     if (!incomingCall) return;
 
@@ -781,9 +656,9 @@ export default function ModernChat() {
           autoGainControl: true
         },
         video: incomingCall.callType === 'video' ? {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 }
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 }
         } : false
       };
 
@@ -796,13 +671,7 @@ export default function ModernChat() {
       if (incomingCall.callType === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
-        
-        const playVideo = () => {
-          localVideoRef.current.play().catch(console.error);
-        };
-
-        localVideoRef.current.onloadedmetadata = playVideo;
-        localVideoRef.current.oncanplay = playVideo;
+        localVideoRef.current.play().catch(console.error);
       }
 
       callRoomIdRef.current = incomingCall.roomId;
@@ -818,15 +687,9 @@ export default function ModernChat() {
           from: currentUser._id,
           roomId: incomingCall.roomId
         });
-
-        socketRef.current.emit('join-call', {
-          roomId: incomingCall.roomId,
-          userId: currentUser._id
-        });
-        console.log("✅ Call accepted, joining room:", incomingCall.roomId);
+        console.log("✅ Call accepted, notifying caller:", incomingCall.caller._id);
       }
 
-      // Peer connection will be created when we receive the offer
       setIncomingCall(null);
 
     } catch (error) {
@@ -856,7 +719,7 @@ export default function ModernChat() {
     
     if (socketRef.current && callRoomIdRef.current) {
       socketRef.current.emit('end-call', {
-        roomId: callRoomIdRef.current,
+        to: callParticipants.map(p => p._id).filter(id => id !== currentUser._id),
         from: currentUser._id
       });
     }
@@ -955,7 +818,6 @@ export default function ModernChat() {
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-lg font-semibold">Loading Chat...</p>
-          <p className="text-gray-400 mt-2">Please wait a moment</p>
         </div>
       </div>
     );
@@ -1134,7 +996,7 @@ export default function ModernChat() {
               showChatPanel || showParticipants ? 'lg:w-3/4' : 'w-full'
             }`}>
               {callType === 'video' ? (
-                <div className="h-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Local Video */}
                   <div className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-purple-500/50 group shadow-2xl">
                     {isVideoOff ? (
@@ -1153,18 +1015,12 @@ export default function ModernChat() {
                         muted
                         playsInline
                         className="w-full h-full object-cover bg-gray-900"
-                        onError={(e) => console.error("Local video error:", e)}
                       />
                     )}
                     <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
                       <span className="font-semibold">You</span>
                       {isMuted && <span className="ml-2">🔇</span>}
                     </div>
-                    {isScreenSharing && (
-                      <div className="absolute top-4 left-4 bg-blue-600 px-3 py-1 rounded-full text-xs backdrop-blur-sm border border-blue-400/50">
-                        🖥️ Sharing Screen
-                      </div>
-                    )}
                   </div>
 
                   {/* Remote Videos */}
@@ -1177,7 +1033,6 @@ export default function ModernChat() {
                           playsInline
                           className="w-full h-full object-cover bg-gray-900"
                           onLoadedMetadata={(e) => e.target.play().catch(console.error)}
-                          onError={(e) => console.error("Remote video error:", e)}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
@@ -1230,42 +1085,6 @@ export default function ModernChat() {
                 </div>
               )}
             </div>
-
-            {/* Side Panels */}
-            {(showChatPanel || showParticipants) && (
-              <div className="w-full lg:w-1/4 bg-gray-800/80 backdrop-blur-sm border-l border-gray-700 flex flex-col">
-                {showParticipants && (
-                  <div className="flex-1 p-6">
-                    <h4 className="font-semibold text-lg mb-6 flex items-center space-x-2">
-                      <Users className="w-5 h-5" />
-                      <span>Participants ({callParticipants.length + 1})</span>
-                    </h4>
-                    <div className="space-y-4">
-                      <div className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-xl border border-gray-600/50">
-                        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg">
-                          {currentUser.username.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold">You</p>
-                          <p className="text-sm text-gray-400">{isMuted ? 'Muted' : 'Unmuted'}</p>
-                        </div>
-                      </div>
-                      {callParticipants.map(participant => (
-                        <div key={participant._id} className="flex items-center space-x-4 p-4 bg-gray-700/50 rounded-xl border border-gray-600/50">
-                          <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-semibold text-sm shadow-lg">
-                            {participant.username.substring(0, 2).toUpperCase()}
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-semibold">{participant.username}</p>
-                            <p className="text-sm text-gray-400">Connected</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Bottom Controls */}
@@ -1278,7 +1097,6 @@ export default function ModernChat() {
                     ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
                     : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                 }`}
-                title={isMuted ? 'Unmute' : 'Mute'}
               >
                 {isMuted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
               </button>
@@ -1291,7 +1109,6 @@ export default function ModernChat() {
                       ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
                       : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                   }`}
-                  title={isVideoOff ? 'Turn on camera' : 'Turn off camera'}
                 >
                   {isVideoOff ? <VideoOff className="w-7 h-7" /> : <Video className="w-7 h-7" />}
                 </button>
@@ -1305,7 +1122,6 @@ export default function ModernChat() {
                       ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white'
                       : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
                   }`}
-                  title={isScreenSharing ? 'Stop sharing' : 'Share screen'}
                 >
                   {isScreenSharing ? <MonitorOff className="w-7 h-7" /> : <Monitor className="w-7 h-7" />}
                 </button>
@@ -1314,7 +1130,6 @@ export default function ModernChat() {
               <button
                 onClick={endCall}
                 className="p-5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-2xl transition-all transform hover:scale-110 shadow-2xl"
-                title="End call"
               >
                 <PhoneOff className="w-7 h-7" />
               </button>
