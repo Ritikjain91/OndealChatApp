@@ -52,6 +52,7 @@ export default function ModernChat() {
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [callStatus, setCallStatus] = useState("");
+  const [callDuration, setCallDuration] = useState(0);
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -63,6 +64,7 @@ export default function ModernChat() {
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const callRoomIdRef = useRef(null);
+  const callTimerRef = useRef(null);
 
   const ICE_SERVERS = {
     iceServers: [
@@ -72,6 +74,27 @@ export default function ModernChat() {
       { urls: 'stun:stun3.l.google.com:19302' },
     ]
   };
+
+  // Format call duration
+  const formatDuration = (seconds) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hrs > 0) return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Call duration timer
+  useEffect(() => {
+    if (inCall && callStatus === 'Connected') {
+      callTimerRef.current = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (callTimerRef.current) clearInterval(callTimerRef.current);
+    };
+  }, [inCall, callStatus]);
 
   const getToken = useCallback(() => {
     return localStorage.getItem("token");
@@ -106,7 +129,6 @@ export default function ModernChat() {
     }
   }, [selectedUser, getToken]);
 
-  // Initialize user and socket
   useEffect(() => {
     const fetchCurrentUser = async () => {
       try {
@@ -150,7 +172,6 @@ export default function ModernChat() {
     };
   }, [getToken]);
 
-  // Cleanup media streams
   const cleanupMediaStreams = useCallback(() => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -166,25 +187,21 @@ export default function ModernChat() {
     callRoomIdRef.current = null;
   }, []);
 
-  // Create peer connection
   const createPeerConnection = useCallback((userId) => {
-    console.log(`🔄 Creating peer connection for: ${userId}`);
+    console.log(`Creating peer connection for: ${userId}`);
     
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Add local tracks if available
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         if (localStreamRef.current) {
           pc.addTrack(track, localStreamRef.current);
-          console.log(`✅ Added ${track.kind} track to peer connection`);
         }
       });
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
-        console.log(`🧊 Sending ICE candidate to: ${userId}`);
         socketRef.current.emit('ice-candidate', {
           candidate: event.candidate,
           to: userId,
@@ -194,19 +211,15 @@ export default function ModernChat() {
     };
 
     pc.ontrack = (event) => {
-      console.log(`🎥 Received remote track from: ${userId}`, event.streams[0]);
       if (event.streams && event.streams[0]) {
         remoteVideosRef.current[userId] = event.streams[0];
-        console.log(`✅ Remote stream stored for: ${userId}`);
-        
-        // Force UI update
         setCallParticipants(prev => [...prev]);
         setCallStatus("Connected");
       }
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`📡 Connection state for ${userId}: ${pc.connectionState}`);
+      console.log(`Connection state for ${userId}: ${pc.connectionState}`);
       setCallStatus(pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1));
     };
 
@@ -214,10 +227,8 @@ export default function ModernChat() {
     return pc;
   }, []);
 
-  // Initialize socket connection
   const initSocket = useCallback((token, user) => {
     if (socketRef.current) return;
-
     if (!token) return;
 
     try {
@@ -230,22 +241,20 @@ export default function ModernChat() {
       socketRef.current = socket;
 
       socket.on("connect", () => {
-        console.log("✅ Socket connected:", socket.id);
+        console.log("Socket connected:", socket.id);
         if (user && user._id) {
           socket.emit("register", user._id);
-          console.log("Registered user with socket:", user._id);
         }
       });
       
       socket.on("connect_error", (error) => {
-        console.error("❌ Socket connection error:", error);
+        console.error("Socket connection error:", error);
         if (error.message.includes("auth")) {
           localStorage.removeItem("token");
           setCurrentUser(null);
         }
       });
 
-      // Message events
       socket.on("receiveMessage", (message) => {
         if (selectedUser && message.sender._id === selectedUser._id) {
           const formatted = {
@@ -290,15 +299,14 @@ export default function ModernChat() {
         if (selectedUser && userId === selectedUser._id) setIsTyping(false);
       });
 
-      // Call signaling events - FIXED VERSION
       socket.on("incoming-call", ({ from, callType: type, roomId }) => {
-        console.log("📞 Incoming call from:", from);
+        console.log("Incoming call from:", from);
         const caller = users.find(u => u._id === from) || { _id: from, username: "Unknown User" };
         setIncomingCall({ caller, callType: type, roomId });
       });
 
       socket.on("call-accepted", async ({ from, roomId }) => {
-        console.log("✅ Call accepted by:", from);
+        console.log("Call accepted by:", from);
         setCallStatus("Connecting...");
         
         const user = users.find(u => u._id === from);
@@ -306,7 +314,6 @@ export default function ModernChat() {
           setCallParticipants(prev => [...prev, user]);
         }
         
-        // Create peer connection for the user who accepted
         const pc = createPeerConnection(from);
         try {
           const offer = await pc.createOffer();
@@ -317,26 +324,24 @@ export default function ModernChat() {
             to: from,
             roomId
           });
-          console.log("📨 Sent offer to accepted user:", from);
         } catch (error) {
-          console.error("❌ Error creating offer:", error);
+          console.error("Error creating offer:", error);
         }
       });
 
       socket.on("call-rejected", ({ from }) => {
-        console.log("❌ Call rejected by:", from);
+        console.log("Call rejected by:", from);
         alert(`${users.find(u => u._id === from)?.username || 'User'} rejected the call`);
         endCall();
       });
 
       socket.on("call-ended", ({ from }) => {
-        console.log("📞 Call ended by:", from);
+        console.log("Call ended by:", from);
         alert(`${users.find(u => u._id === from)?.username || 'User'} ended the call`);
         endCall();
       });
 
       socket.on("webrtc-offer", async ({ offer, from, roomId }) => {
-        console.log("📨 Received WebRTC offer from:", from);
         try {
           const pc = createPeerConnection(from);
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -349,51 +354,44 @@ export default function ModernChat() {
             to: from,
             roomId
           });
-          console.log("📨 Sent WebRTC answer to:", from);
         } catch (error) {
-          console.error("❌ Error handling offer:", error);
+          console.error("Error handling offer:", error);
         }
       });
 
       socket.on("webrtc-answer", async ({ answer, from }) => {
-        console.log("📨 Received WebRTC answer from:", from);
         const pc = peerConnectionsRef.current[from];
         if (pc) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
-            console.log("✅ Remote description set for:", from);
           } catch (error) {
-            console.error("❌ Error setting remote description:", error);
+            console.error("Error setting remote description:", error);
           }
         }
       });
 
       socket.on("ice-candidate", async ({ candidate, from }) => {
-        console.log("🧊 Received ICE candidate from:", from);
         const pc = peerConnectionsRef.current[from];
         if (pc && candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            console.log("✅ ICE candidate added for:", from);
           } catch (error) {
-            console.error("❌ Error adding ICE candidate:", error);
+            console.error("Error adding ICE candidate:", error);
           }
         }
       });
 
     } catch (error) {
-      console.error("❌ Failed to initialize socket:", error);
+      console.error("Failed to initialize socket:", error);
     }
   }, [currentUser, users, callParticipants, createPeerConnection, fetchUsers, selectedUser]);
 
-  // Fetch users when currentUser changes
   useEffect(() => {
     if (currentUser) {
       fetchUsers();
     }
   }, [currentUser, fetchUsers]);
 
-  // Fetch messages when selected user changes
   useEffect(() => {
     const fetchMessages = async () => {
       if (!selectedUser || !currentUser) return;
@@ -422,9 +420,6 @@ export default function ModernChat() {
             status: "delivered"
           }));
           setMessages(formattedMessages);
-        } else if (response.status === 401) {
-          localStorage.removeItem("token");
-          setCurrentUser(null);
         }
       } catch (error) {
         console.error("Failed to fetch messages:", error);
@@ -434,7 +429,6 @@ export default function ModernChat() {
     fetchMessages();
   }, [selectedUser, currentUser, getToken]);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (listRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = listRef.current;
@@ -559,7 +553,6 @@ export default function ModernChat() {
     cleanupMediaStreams();
   };
 
-  // Start a call - FIXED VERSION
   const startCall = async (type) => {
     if (!selectedUser || !currentUser) {
       alert("Please select a user to call");
@@ -567,10 +560,10 @@ export default function ModernChat() {
     }
 
     try {
-      console.log("🎬 Starting call...");
+      console.log("Starting call...");
       setCallStatus("Starting call...");
+      setCallDuration(0);
 
-      // Get user media
       const constraints = {
         audio: {
           echoCancellation: true,
@@ -584,26 +577,16 @@ export default function ModernChat() {
         } : false
       };
 
-      console.log("📹 Requesting media with constraints:", constraints);
-      
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
 
-      console.log("✅ Media stream obtained:", {
-        audioTracks: stream.getAudioTracks().length,
-        videoTracks: stream.getVideoTracks().length
-      });
-
-      // Set local video stream
       if (type === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
         
         localVideoRef.current.play().catch(error => {
-          console.error("❌ Error playing local video:", error);
+          console.error("Error playing local video:", error);
         });
-        
-        console.log("🎥 Local video stream set");
       }
 
       const roomId = `call-${currentUser._id}-${Date.now()}`;
@@ -621,11 +604,10 @@ export default function ModernChat() {
           callType: type,
           roomId
         });
-        console.log("📞 Call initiated to:", selectedUser.username);
       }
 
     } catch (error) {
-      console.error("❌ Error starting call:", error);
+      console.error("Error starting call:", error);
       
       if (error.name === 'NotAllowedError') {
         alert("Camera/microphone access was denied. Please check your browser permissions.");
@@ -641,13 +623,13 @@ export default function ModernChat() {
     }
   };
 
-  // Accept incoming call - FIXED VERSION
   const acceptCall = async () => {
     if (!incomingCall) return;
 
     try {
-      console.log("✅ Accepting call...");
+      console.log("Accepting call...");
       setCallStatus("Accepting call...");
+      setCallDuration(0);
 
       const constraints = {
         audio: {
@@ -665,9 +647,6 @@ export default function ModernChat() {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       localStreamRef.current = stream;
 
-      console.log("✅ Media stream obtained for call acceptance");
-
-      // Set local video stream
       if (incomingCall.callType === 'video' && localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
         localVideoRef.current.muted = true;
@@ -687,19 +666,17 @@ export default function ModernChat() {
           from: currentUser._id,
           roomId: incomingCall.roomId
         });
-        console.log("✅ Call accepted, notifying caller:", incomingCall.caller._id);
       }
 
       setIncomingCall(null);
 
     } catch (error) {
-      console.error("❌ Error accepting call:", error);
+      console.error("Error accepting call:", error);
       alert("Could not access camera/microphone. Please check permissions.");
       rejectCall();
     }
   };
 
-  // Reject incoming call
   const rejectCall = () => {
     if (!incomingCall) return;
 
@@ -713,9 +690,8 @@ export default function ModernChat() {
     setIncomingCall(null);
   };
 
-  // End current call
   const endCall = () => {
-    console.log("🛑 Ending call...");
+    console.log("Ending call...");
     
     if (socketRef.current && callRoomIdRef.current) {
       socketRef.current.emit('end-call', {
@@ -723,6 +699,8 @@ export default function ModernChat() {
         from: currentUser._id
       });
     }
+
+    if (callTimerRef.current) clearInterval(callTimerRef.current);
 
     cleanupMediaStreams();
     setInCall(false);
@@ -734,42 +712,36 @@ export default function ModernChat() {
     setShowChatPanel(false);
     setShowParticipants(false);
     setCallStatus("");
+    setCallDuration(0);
   };
 
-  // Toggle mute
   const toggleMute = () => {
     if (localStreamRef.current) {
       const audioTracks = localStreamRef.current.getAudioTracks();
       if (audioTracks.length > 0) {
         audioTracks[0].enabled = !audioTracks[0].enabled;
         setIsMuted(!audioTracks[0].enabled);
-        console.log(`🔇 Mute: ${!audioTracks[0].enabled}`);
       }
     }
   };
 
-  // Toggle video
   const toggleVideo = () => {
     if (localStreamRef.current) {
       const videoTracks = localStreamRef.current.getVideoTracks();
       if (videoTracks.length > 0) {
         videoTracks[0].enabled = !videoTracks[0].enabled;
         setIsVideoOff(!videoTracks[0].enabled);
-        console.log(`📹 Video: ${!videoTracks[0].enabled ? 'off' : 'on'}`);
       }
     }
   };
 
-  // Toggle screen share
   const toggleScreenShare = async () => {
     if (isScreenSharing) {
-      // Stop screen sharing
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(track => track.stop());
         screenStreamRef.current = null;
       }
 
-      // Switch back to camera
       if (localStreamRef.current) {
         const videoTrack = localStreamRef.current.getVideoTracks()[0];
         Object.values(peerConnectionsRef.current).forEach(pc => {
@@ -783,7 +755,6 @@ export default function ModernChat() {
       setIsScreenSharing(false);
     } else {
       try {
-        // Start screen sharing
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ 
           video: { cursor: "always" },
           audio: true 
@@ -792,7 +763,6 @@ export default function ModernChat() {
 
         const screenTrack = screenStream.getVideoTracks()[0];
         
-        // Replace video track in all peer connections
         Object.values(peerConnectionsRef.current).forEach(pc => {
           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
           if (sender) {
@@ -806,36 +776,34 @@ export default function ModernChat() {
 
         setIsScreenSharing(true);
       } catch (error) {
-        console.error("❌ Error sharing screen:", error);
+        console.error("Error sharing screen:", error);
       }
     }
   };
 
-  // Loading state
   if (loading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-lg font-semibold">Loading Chat...</p>
         </div>
       </div>
     );
   }
 
-  // No user state
   if (!currentUser) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="text-center max-w-md px-4">
-          <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-2xl">
             <Users className="w-10 h-10 text-white" />
           </div>
           <h2 className="text-2xl font-bold mb-2">Welcome Back</h2>
-          <p className="text-gray-400 mb-6">Please log in to continue chatting</p>
+          <p className="text-slate-400 mb-6">Please log in to continue chatting</p>
           <button
             onClick={() => window.location.href = '/login'}
-            className="px-8 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 rounded-xl transition-all transform hover:scale-105 font-semibold shadow-lg"
+            className="px-8 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 rounded-xl transition-all transform hover:scale-105 font-semibold shadow-lg"
           >
             Sign In to Continue
           </button>
@@ -844,39 +812,38 @@ export default function ModernChat() {
     );
   }
 
-  // No selected user state
   if (!selectedUser) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white">
+      <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="text-center max-w-md px-4">
-          <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-2xl">
             <Users className="w-10 h-10 text-white" />
           </div>
           <h2 className="text-2xl font-bold mb-2">Select a Chat</h2>
-          <p className="text-gray-400 mb-6">Choose from {users.length} available user{users.length !== 1 ? 's' : ''}</p>
+          <p className="text-slate-400 mb-6">Choose from {users.length} available user{users.length !== 1 ? 's' : ''}</p>
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {users.map(user => (
               <button
                 key={user._id}
                 onClick={() => setSelectedUser(user)}
-                className="w-full p-4 bg-gray-800/50 hover:bg-gray-700/50 border border-gray-600 rounded-xl transition-all flex items-center space-x-3 group hover:border-purple-500/50"
+                className="w-full p-4 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 rounded-xl transition-all flex items-center space-x-3 group hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/20"
               >
                 <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold group-hover:scale-105 transition-transform">
+                  <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold group-hover:scale-105 transition-transform shadow-lg">
                     {user.username.substring(0, 2).toUpperCase()}
                   </div>
                   {onlineUsers.includes(user._id) && (
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-gray-900 rounded-full"></div>
+                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
                   )}
                 </div>
                 <div className="flex-1 text-left">
                   <p className="font-semibold text-white">{user.username}</p>
-                  <p className="text-sm text-gray-400">{user.email}</p>
+                  <p className="text-sm text-slate-400">{user.email}</p>
                 </div>
-                <div className={`px-2 py-1 rounded-full text-xs ${
+                <div className={`px-2 py-1 rounded-full text-xs font-medium ${
                   onlineUsers.includes(user._id) 
-                    ? 'bg-green-500/20 text-green-400' 
-                    : 'bg-gray-500/20 text-gray-400'
+                    ? 'bg-emerald-500/20 text-emerald-400' 
+                    : 'bg-slate-500/20 text-slate-400'
                 }`}>
                   {onlineUsers.includes(user._id) ? 'Online' : 'Offline'}
                 </div>
@@ -891,41 +858,44 @@ export default function ModernChat() {
   const isUserOnline = onlineUsers.includes(selectedUser._id);
 
   return (
-    <div className="h-screen w-full flex bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white relative overflow-hidden">
+    <div className="h-screen w-full flex bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white relative overflow-hidden">
       {/* Incoming Call Modal */}
       {incomingCall && (
-        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-50 flex items-center justify-center">
-          <div className="bg-gray-900 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl border border-purple-500/30">
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-12 max-w-md w-full shadow-2xl border border-cyan-500/30">
             <div className="text-center">
-              <div className="w-28 h-28 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-6 animate-pulse shadow-2xl">
+              <div className="w-32 h-32 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-4xl mx-auto mb-8 animate-pulse shadow-2xl">
                 {incomingCall.caller.username.substring(0, 2).toUpperCase()}
               </div>
-              <h3 className="text-2xl font-bold mb-2 text-white">{incomingCall.caller.username}</h3>
-              <p className="text-gray-300 mb-2">is calling you with</p>
-              <div className="flex items-center justify-center space-x-2 mb-6">
+              <h3 className="text-3xl font-bold mb-2 text-white">{incomingCall.caller.username}</h3>
+              <p className="text-slate-300 mb-3">is calling you</p>
+              <div className="flex items-center justify-center space-x-3 mb-8 bg-slate-800/50 rounded-xl py-3 px-4">
                 {incomingCall.callType === 'video' ? (
-                  <Video className="w-5 h-5 text-purple-400" />
+                  <>
+                    <Video className="w-5 h-5 text-cyan-400" />
+                    <p className="text-cyan-400 font-semibold">Video Call</p>
+                  </>
                 ) : (
-                  <Phone className="w-5 h-5 text-purple-400" />
+                  <>
+                    <Phone className="w-5 h-5 text-cyan-400" />
+                    <p className="text-cyan-400 font-semibold">Audio Call</p>
+                  </>
                 )}
-                <p className="text-purple-400 font-semibold">
-                  {incomingCall.callType === 'video' ? 'Video Call' : 'Audio Call'}
-                </p>
               </div>
-              <div className="flex space-x-4">
+              <div className="flex gap-4">
                 <button
                   onClick={rejectCall}
-                  className="flex-1 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-lg"
+                  className="flex-1 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 rounded-2xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-xl font-semibold"
                 >
                   <PhoneOff className="w-5 h-5" />
-                  <span className="font-semibold">Decline</span>
+                  <span>Decline</span>
                 </button>
                 <button
                   onClick={acceptCall}
-                  className="flex-1 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-lg"
+                  className="flex-1 py-4 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 rounded-2xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 shadow-xl font-semibold"
                 >
                   <Phone className="w-5 h-5" />
-                  <span className="font-semibold">Accept</span>
+                  <span>Accept</span>
                 </button>
               </div>
             </div>
@@ -935,75 +905,62 @@ export default function ModernChat() {
 
       {/* Video Call Interface */}
       {inCall && (
-        <div className="fixed inset-0 bg-gray-900 z-40 flex flex-col">
+        <div className="fixed inset-0 bg-slate-950 z-40 flex flex-col">
           {/* Top Bar */}
-          <div className="flex items-center justify-between px-6 py-4 bg-gray-900/95 backdrop-blur-sm border-b border-gray-700">
-            <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
+          <div className="flex items-center justify-between px-8 py-6 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
+            <div className="flex items-center space-x-6">
+              <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
                 {currentUser.username.substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <h3 className="font-semibold text-white text-lg">
-                  {selectedUser.username}
-                  {callParticipants.length > 1 && ` + ${callParticipants.length - 1} others`}
-                </h3>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-2 h-2 rounded-full ${
-                    callStatus === 'Connected' ? 'bg-green-500' : 
-                    callStatus === 'Connecting' ? 'bg-yellow-500' : 'bg-gray-500'
-                  }`}></div>
-                  <p className="text-sm text-gray-400">
+                <h3 className="font-bold text-white text-xl">{selectedUser.username}</h3>
+                <div className="flex items-center space-x-3">
+                  <div className={`w-2.5 h-2.5 rounded-full ${
+                    callStatus === 'Connected' ? 'bg-emerald-400' : 
+                    callStatus === 'Connecting' ? 'bg-amber-400 animate-pulse' : 'bg-slate-400'
+                  } shadow-lg`}></div>
+                  <p className="text-sm text-slate-300">
                     {callType === 'video' ? 'Video call' : 'Audio call'} • {callStatus || 'Connecting...'}
                   </p>
+                  {callStatus === 'Connected' && (
+                    <span className="ml-4 text-sm font-mono text-cyan-400 bg-slate-800/50 px-3 py-1 rounded-lg">{formatDuration(callDuration)}</span>
+                  )}
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowParticipants(!showParticipants)}
-                className={`p-3 rounded-xl transition-all ${
-                  showParticipants 
-                    ? 'bg-purple-600 text-white shadow-lg' 
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
-                }`}
-              >
-                <Users className="w-5 h-5" />
-              </button>
+            <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowChatPanel(!showChatPanel)}
-                className={`p-3 rounded-xl transition-all ${
+                className={`p-3 rounded-xl transition-all shadow-lg ${
                   showChatPanel 
-                    ? 'bg-purple-600 text-white shadow-lg' 
-                    : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                    ? 'bg-cyan-600 text-white' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}
               >
                 <MessageCircle className="w-5 h-5" />
               </button>
               <button
                 onClick={endCall}
-                className="p-3 text-red-400 hover:bg-red-600/20 hover:text-red-300 rounded-xl transition-all"
+                className="p-3 text-red-400 hover:bg-red-600/30 hover:text-red-300 rounded-xl transition-all shadow-lg"
               >
-                <PhoneOff className="w-5 h-5" />
+                <PhoneOff className="w-6 h-6" />
               </button>
             </div>
           </div>
 
-          {/* Main Content */}
-          <div className="flex-1 flex">
-            {/* Video Grid */}
-            <div className={`flex-1 p-6 transition-all duration-300 ${
-              showChatPanel || showParticipants ? 'lg:w-3/4' : 'w-full'
-            }`}>
+          {/* Main Video Content */}
+          <div className="flex-1 flex gap-6 p-6 overflow-hidden">
+            <div className="flex-1">
               {callType === 'video' ? (
-                <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr">
                   {/* Local Video */}
-                  <div className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-purple-500/50 group shadow-2xl">
+                  <div className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl overflow-hidden border-2 border-cyan-500/50 shadow-2xl">
                     {isVideoOff ? (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
                         <div className="text-center">
-                          <div className="w-24 h-24 bg-gray-700 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 shadow-lg">
-                            <Camera className="w-8 h-8" />
+                          <div className="w-24 h-24 bg-slate-700 rounded-full flex items-center justify-center text-slate-400 mx-auto mb-4 shadow-lg">
+                            <Camera className="w-10 h-10" />
                           </div>
                           <p className="text-white font-semibold">Camera Off</p>
                         </div>
@@ -1014,124 +971,164 @@ export default function ModernChat() {
                         autoPlay
                         muted
                         playsInline
-                        className="w-full h-full object-cover bg-gray-900"
+                        className="w-full h-full object-cover bg-slate-900"
                       />
                     )}
-                    <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
-                      <span className="font-semibold">You</span>
-                      {isMuted && <span className="ml-2">🔇</span>}
+                    <div className="absolute bottom-4 left-4 bg-black/80 px-4 py-2 rounded-full text-sm backdrop-blur-md border border-slate-700/50 shadow-lg">
+                      <span className="font-semibold text-white">You</span>
+                      {isMuted && <span className="ml-2 text-red-400">🔇</span>}
                     </div>
                   </div>
 
                   {/* Remote Videos */}
                   {callParticipants.map(participant => (
-                    <div key={participant._id} className="relative bg-gray-800 rounded-2xl overflow-hidden border-2 border-gray-600 group hover:border-purple-500/50 transition-all duration-300 shadow-2xl">
+                    <div key={participant._id} className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700 hover:border-cyan-500/50 transition-all shadow-2xl group">
                       {remoteVideosRef.current[participant._id] ? (
                         <video
                           srcObject={remoteVideosRef.current[participant._id]}
                           autoPlay
                           playsInline
-                          className="w-full h-full object-cover bg-gray-900"
+                          className="w-full h-full object-cover bg-slate-900"
                           onLoadedMetadata={(e) => e.target.play().catch(console.error)}
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
                           <div className="text-center">
-                            <div className="w-24 h-24 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 shadow-lg">
+                            <div className="w-24 h-24 bg-gradient-to-br from-emerald-500 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold text-3xl mx-auto mb-4 shadow-lg animate-pulse">
                               {participant.username.substring(0, 2).toUpperCase()}
                             </div>
                             <p className="text-white font-semibold">{participant.username}</p>
-                            <p className="text-gray-400 text-sm mt-2">Connecting...</p>
+                            <p className="text-slate-400 text-sm mt-2">Connecting...</p>
                           </div>
                         </div>
                       )}
-                      <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-full text-sm backdrop-blur-sm border border-gray-600/50">
-                        <span className="font-semibold">{participant.username}</span>
+                      <div className="absolute bottom-4 left-4 bg-black/80 px-4 py-2 rounded-full text-sm backdrop-blur-md border border-slate-700/50 shadow-lg">
+                        <span className="font-semibold text-white">{participant.username}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="grid grid-cols-2 gap-16 mb-12">
-                      {/* Local Audio Avatar */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-36 h-36 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-6 shadow-2xl">
-                          {currentUser.username.substring(0, 2).toUpperCase()}
+                  <div className="grid grid-cols-2 gap-12">
+                    {/* Local Audio Avatar */}
+                    <div className="flex flex-col items-center justify-center text-center">
+                      <div className="w-36 h-36 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-8 shadow-2xl">
+                        {currentUser.username.substring(0, 2).toUpperCase()}
+                      </div>
+                      <p className="text-2xl font-bold mb-3">You</p>
+                      <div className="flex items-center justify-center space-x-3 bg-slate-800/50 rounded-xl px-4 py-2">
+                        <div className={`w-2.5 h-2.5 rounded-full ${isMuted ? 'bg-red-500' : 'bg-emerald-400'}`}></div>
+                        <p className="text-slate-300">{isMuted ? 'Muted' : 'Speaking'}</p>
+                      </div>
+                    </div>
+
+                    {/* Remote Audio Avatar */}
+                    {callParticipants.map(participant => (
+                      <div key={participant._id} className="flex flex-col items-center justify-center text-center">
+                        <div className="w-36 h-36 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-8 shadow-2xl animate-pulse">
+                          {participant.username.substring(0, 2).toUpperCase()}
                         </div>
-                        <p className="text-2xl font-semibold mb-2">You</p>
-                        <div className="flex items-center space-x-2">
-                          <div className={`w-2 h-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-green-500'}`}></div>
-                          <p className="text-gray-400">{isMuted ? 'Muted' : 'Speaking'}</p>
+                        <p className="text-2xl font-bold mb-3">{participant.username}</p>
+                        <div className="flex items-center justify-center space-x-2 text-emerald-400">
+                          <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping"></div>
+                          <p className="text-slate-300">Connected</p>
                         </div>
                       </div>
-
-                      {/* Remote Audio Avatar */}
-                      {callParticipants.map(participant => (
-                        <div key={participant._id} className="flex flex-col items-center">
-                          <div className="w-36 h-36 bg-gradient-to-br from-green-500 to-teal-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-6 shadow-2xl animate-pulse">
-                            {participant.username.substring(0, 2).toUpperCase()}
-                          </div>
-                          <p className="text-2xl font-semibold mb-2">{participant.username}</p>
-                          <div className="flex items-center space-x-2">
-                            <div className="w-2 h-2 bg-green-500 rounded-full animate-ping"></div>
-                            <p className="text-gray-400">Connected</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
+
+            {/* Chat Panel */}
+            {showChatPanel && (
+              <div className="w-80 bg-slate-900/90 rounded-2xl border border-slate-800 flex flex-col shadow-xl overflow-hidden">
+                <div className="p-4 border-b border-slate-800 bg-slate-800/50">
+                  <h3 className="font-bold text-white">Chat</h3>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {messages.slice(-20).map(msg => (
+                    <div key={msg.id} className={`flex ${msg.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-xs px-4 py-2 rounded-xl text-sm ${
+                        msg.sender === 'me'
+                          ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white'
+                          : 'bg-slate-800 text-slate-100'
+                      }`}>
+                        <p>{msg.text}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-3 border-t border-slate-800 flex gap-2">
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={handleInputChange}
+                    placeholder="Type message..."
+                    className="flex-1 px-3 py-2 bg-slate-800 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!value.trim()}
+                    className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 rounded-lg transition-all"
+                  >
+                    <Send className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Bottom Controls */}
-          <div className="bg-gray-900/95 backdrop-blur-sm border-t border-gray-700 p-8">
-            <div className="max-w-4xl mx-auto flex items-center justify-center space-x-8">
+          <div className="bg-slate-900/95 backdrop-blur-md border-t border-slate-800 p-8 shadow-2xl">
+            <div className="flex items-center justify-center gap-6">
               <button
                 onClick={toggleMute}
-                className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
+                className={`p-4 rounded-2xl transition-all transform hover:scale-110 shadow-xl ${
                   isMuted
-                    ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
-                    : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
+                    ? 'bg-gradient-to-br from-red-600 to-red-700 text-white'
+                    : 'bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:from-slate-600 hover:to-slate-700'
                 }`}
+                title="Toggle Mute"
               >
-                {isMuted ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
+                {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
               </button>
 
               {callType === 'video' && (
                 <button
                   onClick={toggleVideo}
-                  className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
+                  className={`p-4 rounded-2xl transition-all transform hover:scale-110 shadow-xl ${
                     isVideoOff
-                      ? 'bg-gradient-to-r from-red-600 to-red-700 text-white'
-                      : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
+                      ? 'bg-gradient-to-br from-red-600 to-red-700 text-white'
+                      : 'bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:from-slate-600 hover:to-slate-700'
                   }`}
+                  title="Toggle Video"
                 >
-                  {isVideoOff ? <VideoOff className="w-7 h-7" /> : <Video className="w-7 h-7" />}
+                  {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
                 </button>
               )}
 
               {callType === 'video' && (
                 <button
                   onClick={toggleScreenShare}
-                  className={`p-5 rounded-2xl transition-all transform hover:scale-110 shadow-2xl ${
+                  className={`p-4 rounded-2xl transition-all transform hover:scale-110 shadow-xl ${
                     isScreenSharing
-                      ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white'
-                      : 'bg-gradient-to-r from-gray-700 to-gray-800 text-white hover:from-gray-600 hover:to-gray-700'
+                      ? 'bg-gradient-to-br from-blue-600 to-blue-700 text-white'
+                      : 'bg-gradient-to-br from-slate-700 to-slate-800 text-white hover:from-slate-600 hover:to-slate-700'
                   }`}
+                  title="Toggle Screen Share"
                 >
-                  {isScreenSharing ? <MonitorOff className="w-7 h-7" /> : <Monitor className="w-7 h-7" />}
+                  {isScreenSharing ? <MonitorOff className="w-6 h-6" /> : <Monitor className="w-6 h-6" />}
                 </button>
               )}
 
               <button
                 onClick={endCall}
-                className="p-5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white rounded-2xl transition-all transform hover:scale-110 shadow-2xl"
+                className="p-4 bg-gradient-to-br from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white rounded-2xl transition-all transform hover:scale-110 shadow-xl"
+                title="End Call"
               >
-                <PhoneOff className="w-7 h-7" />
+                <PhoneOff className="w-6 h-6" />
               </button>
             </div>
           </div>
@@ -1139,95 +1136,93 @@ export default function ModernChat() {
       )}
 
       {/* User List Sidebar */}
-      <div className={`w-80 bg-gray-900/90 backdrop-blur-sm border-r border-gray-700 flex flex-col transition-all duration-300 ${
-        showUserList ? 'translate-x-0' : '-translate-x-full absolute'
+      <div className={`w-80 bg-slate-900/90 backdrop-blur-md border-r border-slate-800 flex flex-col transition-all duration-300 shadow-2xl ${
+        showUserList ? 'translate-x-0' : '-translate-x-full absolute h-full'
       }`}>
-        <div className="p-6 border-b border-gray-700">
+        <div className="p-6 border-b border-slate-800 bg-slate-800/50">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold">Chats</h2>
             <button
               onClick={() => setShowUserList(false)}
-              className="p-2 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-colors"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-4 space-y-3">
-            {users.map(user => (
-              <button
-                key={user._id}
-                onClick={() => {
-                  setSelectedUser(user);
-                  setShowUserList(false);
-                }}
-                className={`w-full p-4 rounded-xl transition-all flex items-center space-x-4 group ${
-                  selectedUser._id === user._id
-                    ? 'bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/50 shadow-lg'
-                    : 'bg-gray-800/30 hover:bg-gray-700/50 border border-transparent hover:border-gray-600/50'
-                }`}
-              >
-                <div className="relative">
-                  <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-lg group-hover:scale-105 transition-transform shadow-lg">
-                    {user.username.substring(0, 2).toUpperCase()}
-                  </div>
-                  {onlineUsers.includes(user._id) && (
-                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-gray-900 rounded-full shadow-lg"></div>
-                  )}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {users.map(user => (
+            <button
+              key={user._id}
+              onClick={() => {
+                setSelectedUser(user);
+                setShowUserList(false);
+              }}
+              className={`w-full p-4 rounded-xl transition-all flex items-center space-x-4 group ${
+                selectedUser._id === user._id
+                  ? 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border border-cyan-500/50 shadow-lg'
+                  : 'bg-slate-800/30 hover:bg-slate-700/50 border border-slate-700'
+              }`}
+            >
+              <div className="relative">
+                <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold group-hover:scale-105 transition-transform shadow-lg">
+                  {user.username.substring(0, 2).toUpperCase()}
                 </div>
-                <div className="flex-1 text-left">
-                  <p className="font-semibold text-white text-lg">{user.username}</p>
-                  <p className="text-sm text-gray-400">{onlineUsers.includes(user._id) ? 'Online' : 'Offline'}</p>
-                </div>
-              </button>
-            ))}
-          </div>
+                {onlineUsers.includes(user._id) && (
+                  <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
+                )}
+              </div>
+              <div className="flex-1 text-left">
+                <p className="font-semibold text-white">{user.username}</p>
+                <p className="text-xs text-slate-400">{onlineUsers.includes(user._id) ? 'Online' : 'Offline'}</p>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700 shadow-2xl">
+        <div className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 shadow-xl">
           <div className="flex items-center justify-between px-8 py-6">
-            <div className="flex items-center space-x-4 flex-1 min-w-0">
+            <div className="flex items-center space-x-6 flex-1 min-w-0">
               <button
-                onClick={() => setShowUserList(true)}
-                className="p-3 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105"
+                onClick={() => setShowUserList(!showUserList)}
+                className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all"
               >
                 <Menu className="w-6 h-6" />
               </button>
 
               <div className="relative">
-                <div className="w-14 h-14 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-lg shadow-2xl">
+                <div className="w-14 h-14 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
                   {selectedUser.username.substring(0, 2).toUpperCase()}
                 </div>
                 {isUserOnline && (
-                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-gray-900 rounded-full shadow-lg"></div>
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-semibold text-white truncate">{selectedUser.username}</h2>
+                <h2 className="text-xl font-bold text-white truncate">{selectedUser.username}</h2>
                 <div className="flex items-center space-x-3">
                   {isUserOnline && (
-                    <div className="w-3 h-3 bg-green-500 rounded-full shadow-lg"></div>
+                    <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-lg"></div>
                   )}
-                  <p className="text-sm text-gray-300">
+                  <p className="text-sm text-slate-300">
                     {isTyping ? (
-                      <span className="text-purple-400 font-semibold">typing...</span>
+                      <span className="text-cyan-400 font-semibold">typing...</span>
                     ) : isUserOnline ? (
-                      <span className="text-green-400">online</span>
+                      <span className="text-emerald-400">online</span>
                     ) : (
-                      <span className="text-gray-400">offline</span>
+                      <span className="text-slate-400">offline</span>
                     )}
                   </p>
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-3">
               {showSearch && (
                 <div className="relative">
                   <input
@@ -1236,13 +1231,13 @@ export default function ModernChat() {
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     placeholder="Search messages..."
-                    className="w-80 px-5 py-3 pl-12 pr-10 border border-gray-600 rounded-2xl bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent text-sm backdrop-blur-sm shadow-lg"
+                    className="w-80 px-5 py-3 pl-12 border border-slate-600 rounded-xl bg-slate-800/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm backdrop-blur-sm shadow-lg"
                   />
-                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
                   {search && (
                     <button
                       onClick={() => setSearch("")}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-white"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -1250,19 +1245,19 @@ export default function ModernChat() {
                 </div>
               )}
 
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-2">
                 {!showSearch && (
                   <>
                     <button 
                       onClick={() => startCall('audio')}
-                      className="p-3 text-gray-400 hover:text-green-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
+                      className="p-2.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded-lg transition-all shadow-lg"
                       title="Audio call"
                     >
                       <Phone className="w-6 h-6" />
                     </button>
                     <button 
                       onClick={() => startCall('video')}
-                      className="p-3 text-gray-400 hover:text-purple-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
+                      className="p-2.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition-all shadow-lg"
                       title="Video call"
                     >
                       <Video className="w-6 h-6" />
@@ -1272,14 +1267,14 @@ export default function ModernChat() {
 
                 <button
                   onClick={toggleSearch}
-                  className="p-3 text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
+                  className="p-2.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-all shadow-lg"
                 >
                   {showSearch ? <X className="w-6 h-6" /> : <Search className="w-6 h-6" />}
                 </button>
 
                 <button 
                   onClick={handleLogout}
-                  className="p-3 text-gray-400 hover:text-red-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg"
+                  className="p-2.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all shadow-lg"
                   title="Logout"
                 >
                   <LogOut className="w-6 h-6" />
@@ -1290,9 +1285,9 @@ export default function ModernChat() {
         </div>
 
         {search && (
-          <div className="px-8 py-3 bg-gradient-to-r from-blue-900/50 to-purple-900/50 border-b border-blue-700/50 backdrop-blur-sm">
-            <p className="text-sm text-blue-200 font-medium">
-              {filteredMessages.length} message{filteredMessages.length !== 1 ? 's' : ''} found for "{search}"
+          <div className="px-8 py-3 bg-gradient-to-r from-cyan-900/30 to-blue-900/30 border-b border-cyan-700/30 backdrop-blur-sm">
+            <p className="text-sm text-cyan-200 font-medium">
+              {filteredMessages.length} message{filteredMessages.length !== 1 ? 's' : ''} found
             </p>
           </div>
         )}
@@ -1301,9 +1296,9 @@ export default function ModernChat() {
         <div
           ref={listRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-transparent"
+          className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent"
           style={{
-            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 58, 138, 0.7) 50%, rgba(15, 23, 42, 0.9) 100%)'
+            background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.95) 0%, rgba(30, 41, 82, 0.8) 50%, rgba(15, 23, 42, 0.95) 100%)'
           }}
         >
           <div className="p-8 space-y-6">
@@ -1324,17 +1319,17 @@ export default function ModernChat() {
         {showScrollButton && (
           <button
             onClick={scrollToBottom}
-            className="fixed bottom-28 right-8 p-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-2xl shadow-2xl transition-all transform hover:scale-110 z-10 backdrop-blur-sm border border-purple-500/30"
+            className="fixed bottom-28 right-8 p-4 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-2xl shadow-2xl transition-all transform hover:scale-110 z-10 backdrop-blur-sm border border-cyan-500/30"
           >
             <ArrowDown className="w-6 h-6" />
           </button>
         )}
 
         {/* Input */}
-        <div className="bg-gray-900/80 backdrop-blur-sm border-t border-gray-700 shadow-2xl">
+        <div className="bg-slate-900/80 backdrop-blur-md border-t border-slate-800 shadow-2xl">
           <div className="p-6">
-            <div className="flex items-end space-x-4">
-              <button className="p-3 text-gray-400 hover:text-purple-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg">
+            <div className="flex items-end gap-4">
+              <button className="p-2.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition-all shadow-lg">
                 <Paperclip className="w-6 h-6" />
               </button>
 
@@ -1345,28 +1340,28 @@ export default function ModernChat() {
                   onKeyDown={onKeyDown}
                   placeholder="Type your message..."
                   rows="1"
-                  className="w-full px-6 py-4 pr-14 border border-gray-600 rounded-2xl bg-gray-800/50 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none text-base max-h-32 overflow-y-auto backdrop-blur-sm shadow-lg"
+                  className="w-full px-5 py-3 border border-slate-600 rounded-xl bg-slate-800/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none text-base max-h-32 overflow-y-auto backdrop-blur-sm shadow-lg"
                   style={{
-                    minHeight: '56px',
+                    minHeight: '44px',
                     height: 'auto'
                   }}
                 />
               </div>
 
-              <button className="p-3 text-gray-400 hover:text-yellow-400 hover:bg-gray-800/50 rounded-xl transition-all transform hover:scale-105 shadow-lg">
+              <button className="p-2.5 text-slate-400 hover:text-amber-400 hover:bg-slate-800 rounded-lg transition-all shadow-lg">
                 <Smile className="w-6 h-6" />
               </button>
 
               <button
                 onClick={handleSend}
                 disabled={!value.trim()}
-                className={`p-4 rounded-2xl transition-all transform flex-shrink-0 shadow-2xl ${
+                className={`p-3 rounded-lg transition-all flex-shrink-0 shadow-lg ${
                   value.trim()
-                    ? 'bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white hover:scale-105'
-                    : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white'
+                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                 }`}
               >
-                <Send className="w-6 h-6" />
+                <Send className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -1380,15 +1375,15 @@ function MessageRow({ message, showAvatar }) {
   const isMe = message.sender === "me";
 
   return (
-    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end space-x-4`}>
+    <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-3`}>
       {!isMe && showAvatar && (
-        <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-2xl">
+        <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 shadow-lg">
           {message.avatar}
         </div>
       )}
 
       {!isMe && !showAvatar && (
-        <div className="w-12 h-12 flex-shrink-0" />
+        <div className="w-10 h-10 flex-shrink-0" />
       )}
 
       <MessageBubble message={message} isMe={isMe} showAvatar={showAvatar} />
@@ -1400,43 +1395,36 @@ function MessageBubble({ message, isMe, showAvatar }) {
   const getStatusIcon = () => {
     switch (message.status) {
       case "sending":
-        return <div className="w-3 h-3 bg-gray-400 rounded-full animate-pulse" />;
+        return <div className="w-3 h-3 bg-slate-400 rounded-full animate-pulse" />;
       case "sent":
-        return <Check className="w-4 h-4 text-gray-400" />;
+        return <Check className="w-4 h-4 text-slate-400" />;
       case "delivered":
-        return <CheckCheck className="w-4 h-4 text-gray-400" />;
+        return <CheckCheck className="w-4 h-4 text-slate-400" />;
       case "read":
-        return <CheckCheck className="w-4 h-4 text-blue-400" />;
+        return <CheckCheck className="w-4 h-4 text-cyan-400" />;
       default:
         return null;
     }
   };
 
   return (
-    <div
-      className={`max-w-xs sm:max-w-md md:max-w-lg xl:max-w-xl group ${isMe ? 'order-2' : 'order-1'}`}
-    >
+    <div className={`max-w-xs sm:max-w-md md:max-w-lg group`}>
       <div
-        className={`relative px-6 py-4 rounded-2xl shadow-2xl transition-all duration-300 group-hover:shadow-2xl backdrop-blur-sm border ${
+        className={`relative px-5 py-3 rounded-2xl shadow-lg transition-all backdrop-blur-sm border ${
           isMe
-            ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white ml-auto rounded-br-lg border-purple-500/30'
-            : 'bg-gray-800/70 text-gray-100 mr-auto rounded-bl-lg border border-gray-600/50'
+            ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-br-none border-cyan-500/30'
+            : 'bg-slate-800/70 text-slate-100 rounded-bl-none border-slate-600/50'
         }`}
       >
-        {!isMe && showAvatar && (
-          <p className="text-xs font-semibold text-gray-300 mb-2">
-            {message.name}
-          </p>
+        {showAvatar && !isMe && (
+          <p className="text-xs font-semibold text-cyan-300 mb-1">{message.name}</p>
         )}
-
-        <p className="text-base whitespace-pre-wrap leading-relaxed">
-          {message.text}
-        </p>
-
-        <div className="flex items-center justify-end space-x-2 mt-3">
-          <span className={`text-xs ${isMe ? 'text-purple-200' : 'text-gray-400'}`}>
-            {message.time}
-          </span>
+        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{message.text}</p>
+        
+        <div className={`flex items-center justify-end gap-2 mt-2 ${
+          isMe ? 'text-cyan-100' : 'text-slate-400'
+        }`}>
+          <span className="text-xs">{message.time}</span>
           {isMe && (
             <div className="flex items-center">
               {getStatusIcon()}
@@ -1450,14 +1438,18 @@ function MessageBubble({ message, isMe, showAvatar }) {
 
 function TypingIndicator({ avatar }) {
   return (
-    <div className="flex items-end space-x-4">
-      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 shadow-2xl">
+    <div className="flex justify-start items-end gap-3">
+      <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold text-xs flex-shrink-0 shadow-lg">
         {avatar}
       </div>
-      <div className="px-6 py-4 rounded-2xl bg-gray-800/70 text-gray-100 border border-gray-600/50 shadow-2xl flex space-x-2">
-        <div className="w-3 h-3 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0s" }}></div>
-        <div className="w-3 h-3 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.2s" }}></div>
-        <div className="w-3 h-3 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: "0.4s" }}></div>
+      <div className="bg-slate-800/70 text-slate-100 rounded-2xl rounded-bl-none border border-slate-600/50 shadow-lg">
+        <div className="px-5 py-3">
+          <div className="flex space-x-2">
+            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+          </div>
+        </div>
       </div>
     </div>
   );
