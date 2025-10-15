@@ -187,7 +187,7 @@ export default function ModernChat() {
     callRoomIdRef.current = null;
   }, []);
 
-  const createPeerConnection = useCallback((userId) => {
+    const createPeerConnection = useCallback((userId) => {
     console.log(`Creating peer connection for: ${userId}`);
     
     const pc = new RTCPeerConnection(ICE_SERVERS);
@@ -196,12 +196,14 @@ export default function ModernChat() {
       localStreamRef.current.getTracks().forEach(track => {
         if (localStreamRef.current) {
           pc.addTrack(track, localStreamRef.current);
+          console.log(`Added ${track.kind} track to peer connection`);
         }
       });
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
+        console.log(`Sending ICE candidate to ${userId}`);
         socketRef.current.emit('ice-candidate', {
           candidate: event.candidate,
           to: userId,
@@ -211,22 +213,35 @@ export default function ModernChat() {
     };
 
     pc.ontrack = (event) => {
+      console.log(`Received remote track from ${userId}:`, event.track.kind);
       if (event.streams && event.streams[0]) {
         remoteVideosRef.current[userId] = event.streams[0];
-        setCallParticipants(prev => [...prev]);
+        // Force re-render to update video elements
+        setCallParticipants(prev => {
+          const exists = prev.find(p => p._id === userId);
+          return exists ? [...prev] : prev;
+        });
         setCallStatus("Connected");
       }
     };
 
     pc.onconnectionstatechange = () => {
       console.log(`Connection state for ${userId}: ${pc.connectionState}`);
-      setCallStatus(pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1));
+      const status = pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1);
+      setCallStatus(status);
+      
+      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+        console.log(`Connection ${pc.connectionState} for ${userId}, attempting ICE restart`);
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      console.log(`ICE connection state for ${userId}: ${pc.iceConnectionState}`);
     };
 
     peerConnectionsRef.current[userId] = pc;
     return pc;
   }, []);
-
   const initSocket = useCallback((token, user) => {
     if (socketRef.current) return;
     if (!token) return;
