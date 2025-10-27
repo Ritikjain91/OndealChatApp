@@ -239,22 +239,24 @@ const Frontpage = () => {
                 Experience a random chat alternative to find friends, connect with people, and chat with strangers from all over the world!
               </p>
               
-              <div className="flex flex-col sm:flex-row gap-4">
-        <button 
-  onClick={() => handleNavigation('/chatwithoutlogin')}
-  className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 w-fit pointer-events-auto"
->
-  <MessageCircle className="w-4 h-4 mr-2" />
-  Chat Without Login
-</button>
-                <button 
-                  onClick={() => handleNavigation('/login')}
-                  className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-105 hover:shadow-xl"
-                >
-                  <Video className="w-4 h-4 mr-2" />
-                  Chat With Login
-                </button>
-              </div>
+             <div className="flex flex-col sm:flex-row gap-4 relative z-50">
+  <button 
+    onClick={() => handleNavigation('/chatwithoutlogin')}
+    className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 w-fit z-50"
+  >
+    <MessageCircle className="w-4 h-4 mr-2" />
+    Chat Without Login
+  </button>
+
+  <button 
+    onClick={() => handleNavigation('/login')}
+    className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-slate-900 bg-white rounded-full hover:bg-gray-100 transition-all duration-200 hover:scale-105 hover:shadow-xl z-50"
+  >
+    <Video className="w-4 h-4 mr-2" />
+    Chat With Login
+  </button>
+</div>
+
             </div>
             
             <div className="relative animate-fadeInUp">

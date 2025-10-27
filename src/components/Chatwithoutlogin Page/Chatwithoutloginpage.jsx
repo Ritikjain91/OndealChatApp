@@ -21,7 +21,6 @@ import {
 } from "@mui/icons-material";
 import { useAuth } from "../Context/AuthContext";
 
-// ================= Styled Components =================
 const ChatContainer = styled(Container)(({ theme }) => ({
   minHeight: "100vh",
   display: "flex",
