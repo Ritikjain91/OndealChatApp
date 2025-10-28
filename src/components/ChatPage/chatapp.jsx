@@ -137,16 +137,6 @@ export default function ModernChat() {
     });
   }, [currentUser]);
 
-  // Auto-start random chat when partner leaves
-  const autoReconnectRandomChat = useCallback(() => {
-    if (isInRandomChat && currentUser) {
-      console.log("Auto-reconnecting to new random chat...");
-      setTimeout(() => {
-        startRandomChat();
-      }, 1000);
-    }
-  }, [isInRandomChat, currentUser, startRandomChat]);
-
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -258,6 +248,7 @@ export default function ModernChat() {
     return pc;
   }, []);
 
+  // FIXED: Proper socket initialization with correct message handling
   const initSocket = useCallback((token, user) => {
     if (socketRef.current) return;
     if (!token) return;
@@ -287,39 +278,29 @@ export default function ModernChat() {
         }
       });
 
-      // FIXED: Improved message handling for random chat
-      socket.on("receiveMessage", (message) => {
-        console.log("Received message:", message);
+      // FIXED: Unified message handling for both random and regular chats
+      socket.on("receiveMessage", (messageData) => {
+        console.log("Received real-time message:", messageData);
         
-        // For random chat, accept messages from the current random match
-        if (isInRandomChat && randomMatch && message.sender._id === randomMatch._id) {
-          const formatted = {
-            id: message._id,
-            sender: "them",
-            name: message.sender.username,
-            avatar: message.sender.username.substring(0, 2).toUpperCase(),
-            text: message.text,
-            time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            status: "delivered"
-          };
-          setMessages(prev => [...prev, formatted]);
-        }
-        // For regular chat, use selectedUser check
-        else if (selectedUser && message.sender._id === selectedUser._id) {
-          const formatted = {
-            id: message._id,
-            sender: "them",
-            name: message.sender.username,
-            avatar: message.sender.username.substring(0, 2).toUpperCase(),
-            text: message.text,
-            time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            status: "delivered"
-          };
-          setMessages(prev => [...prev, formatted]);
-        }
+        const formattedMessage = {
+          id: messageData._id || messageData.id,
+          sender: messageData.sender._id === currentUser?._id ? "me" : "them",
+          name: messageData.sender._id === currentUser?._id ? "You" : messageData.sender.username,
+          avatar: messageData.sender.username.substring(0, 2).toUpperCase(),
+          text: messageData.text,
+          time: new Date(messageData.createdAt || Date.now()).toLocaleTimeString([], { 
+            hour: "2-digit", 
+            minute: "2-digit" 
+          }),
+          status: "delivered"
+        };
+
+        setMessages(prev => [...prev, formattedMessage]);
       });
 
+      // FIXED: Handle message sent confirmation
       socket.on("messageSent", (payload) => {
+        console.log("Message sent confirmation:", payload);
         const { tempId, message } = payload || {};
         if (tempId && message) {
           setMessages(prev => prev.map(msg =>
@@ -327,7 +308,10 @@ export default function ModernChat() {
               ...msg,
               id: message._id,
               status: "delivered",
-              time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+              time: new Date(message.createdAt).toLocaleTimeString([], { 
+                hour: "2-digit", 
+                minute: "2-digit" 
+              })
             } : msg
           ));
         }
@@ -337,14 +321,17 @@ export default function ModernChat() {
         setOnlineUsers(users);
       });
 
-      socket.on("userTyping", ({ userId }) => {
-        if ((selectedUser && userId === selectedUser._id) || (randomMatch && userId === randomMatch._id)) {
+      // FIXED: Typing indicators
+      socket.on("userTyping", ({ userId, username }) => {
+        const currentPartner = selectedUser || randomMatch;
+        if (currentPartner && userId === currentPartner._id) {
           setIsTyping(true);
         }
       });
       
       socket.on("userStoppedTyping", ({ userId }) => {
-        if ((selectedUser && userId === selectedUser._id) || (randomMatch && userId === randomMatch._id)) {
+        const currentPartner = selectedUser || randomMatch;
+        if (currentPartner && userId === currentPartner._id) {
           setIsTyping(false);
         }
       });
@@ -355,25 +342,26 @@ export default function ModernChat() {
       });
 
       socket.on("random-match-found", (matchedUser) => {
+        console.log("Random match found:", matchedUser);
         setIsFindingRandom(false);
         setRandomMatch(matchedUser);
         setSelectedUser(matchedUser);
         setMessages([]);
-        console.log("Random match found:", matchedUser.username);
         
-        // Fetch messages for the new match
+        // Fetch previous messages with this user
         fetchMessagesForUser(matchedUser);
       });
 
       socket.on("random-match-left", () => {
+        console.log("Random match left");
         setRandomMatch(null);
         setIsFindingRandom(false);
         setMessages([]);
         
-        // Auto-reconnect to new random person
-        if (isInRandomChat) {
-          alert("Your chat partner has left. Finding someone new...");
-          autoReconnectRandomChat();
+        if (isInRandomChat && currentUser) {
+          setTimeout(() => {
+            startRandomChat();
+          }, 2000);
         }
       });
 
@@ -392,7 +380,7 @@ export default function ModernChat() {
         setIsInRandomChat(false);
       });
 
-      // Call events
+      // Call events (keep your existing call handlers)
       socket.on("incoming-call", ({ from, callType: type, roomId, caller }) => {
         const c = caller || { _id: from, username: "Random User" };
         setIncomingCall({ caller: c, callType: type, roomId });
@@ -473,9 +461,9 @@ export default function ModernChat() {
     } catch (error) {
       console.error("Failed to initialize socket:", error);
     }
-  }, [currentUser, callParticipants, createPeerConnection, selectedUser, isInRandomChat, randomMatch, autoReconnectRandomChat]);
+  }, [currentUser, callParticipants, createPeerConnection, selectedUser, randomMatch, isInRandomChat, startRandomChat]);
 
-  // NEW: Separate function to fetch messages for a user
+  // Fetch messages for a specific user
   const fetchMessagesForUser = useCallback(async (user) => {
     if (!user || !currentUser) return;
     
@@ -499,7 +487,10 @@ export default function ModernChat() {
           name: msg.sender._id === currentUser._id ? "You" : msg.sender.username,
           avatar: msg.sender.username.substring(0, 2).toUpperCase(),
           text: msg.text,
-          time: new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          time: new Date(msg.createdAt).toLocaleTimeString([], { 
+            hour: "2-digit", 
+            minute: "2-digit" 
+          }),
           status: "delivered"
         }));
         setMessages(formattedMessages);
@@ -544,18 +535,26 @@ export default function ModernChat() {
     );
   }, [messages, search]);
 
+  // FIXED: Improved send message function
   const handleSend = async () => {
     const text = messageInput.trim();
     if (!text || !currentUser) return;
 
-    // Determine the receiver - either selectedUser or randomMatch
+    // Determine the receiver
     const receiver = selectedUser || randomMatch;
-    if (!receiver) return;
+    if (!receiver) {
+      console.error("No receiver selected");
+      return;
+    }
 
     const tempId = 'temp-' + Date.now();
     const now = new Date();
-    const timeString = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const timeString = now.toLocaleTimeString([], { 
+      hour: "2-digit", 
+      minute: "2-digit" 
+    });
 
+    // Create temporary message
     const tempMessage = {
       id: tempId,
       sender: "me",
@@ -570,6 +569,9 @@ export default function ModernChat() {
     setMessageInput("");
 
     if (socketRef.current && socketRef.current.connected) {
+      console.log("Sending message to:", receiver._id);
+      
+      // Emit the message
       socketRef.current.emit('sendMessage', {
         senderId: currentUser._id,
         receiverId: receiver._id,
@@ -577,6 +579,7 @@ export default function ModernChat() {
         tempId
       });
 
+      // Stop typing indicator
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
@@ -584,25 +587,30 @@ export default function ModernChat() {
         senderId: currentUser._id,
         receiverId: receiver._id
       });
+    } else {
+      console.error("Socket not connected");
     }
   };
 
+  // FIXED: Improved typing handler
   const handleInputChange = (e) => {
     setMessageInput(e.target.value);
 
     if (!currentUser || !socketRef.current) return;
 
-    // Determine the receiver - either selectedUser or randomMatch
     const receiver = selectedUser || randomMatch;
     if (!receiver) return;
 
+    // Emit typing start
     socketRef.current.emit('typing', {
       senderId: currentUser._id,
       receiverId: receiver._id
     });
 
+    // Clear previous timeout
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
+    // Set new timeout to stop typing
     typingTimeoutRef.current = setTimeout(() => {
       if (socketRef.current) {
         socketRef.current.emit('stopTyping', {
@@ -610,7 +618,7 @@ export default function ModernChat() {
           receiverId: receiver._id
         });
       }
-    }, 2000);
+    }, 1000);
   };
 
   const onKeyDown = (e) => {
@@ -644,8 +652,8 @@ export default function ModernChat() {
     cleanupMediaStreams();
   };
 
+  // Rest of your functions (startCall, acceptCall, etc.) remain the same...
   const startCall = async (type) => {
-    // Determine the receiver - either selectedUser or randomMatch
     const receiver = selectedUser || randomMatch;
     if (!receiver || !currentUser) {
       alert("Please start a chat first");
@@ -883,6 +891,9 @@ export default function ModernChat() {
     }
   };
 
+  // ... (keep your existing render logic, it should work fine)
+
+  // The rest of your component rendering remains the same...
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
