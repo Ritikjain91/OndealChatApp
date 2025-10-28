@@ -18,7 +18,6 @@ import {
   Monitor,
   MonitorOff,
   LogOut,
-  Menu,
   MessageCircle,
   Camera,
   Shuffle,
@@ -31,7 +30,7 @@ const SOCKET_URL = "https://ondealchatapp.onrender.com";
 
 export default function ModernChat() {
   const [messages, setMessages] = useState([]);
-  const [value, setValue] = useState("");
+  const [messageInput, setMessageInput] = useState("");
   const [search, setSearch] = useState("");
   const [showSearch, setShowSearch] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -60,6 +59,7 @@ export default function ModernChat() {
   const [callStatus, setCallStatus] = useState("");
   const [callDuration, setCallDuration] = useState(0);
 
+  const messagesEndRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const socketRef = useRef(null);
@@ -98,7 +98,10 @@ export default function ModernChat() {
       }, 1000);
     }
     return () => {
-      if (callTimerRef.current) clearInterval(callTimerRef.current);
+      if (callTimerRef.current) {
+        clearInterval(callTimerRef.current);
+        callTimerRef.current = null;
+      }
     };
   }, [inCall, callStatus]);
 
@@ -143,6 +146,15 @@ export default function ModernChat() {
       }, 1000);
     }
   }, [isInRandomChat, currentUser, startRandomChat]);
+
+  // Scroll to bottom when messages change
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -507,7 +519,7 @@ export default function ModernChat() {
   }, [messages, search]);
 
   const handleSend = async () => {
-    const text = value.trim();
+    const text = messageInput.trim();
     if (!text || !selectedUser || !currentUser) return;
 
     const tempId = 'temp-' + Date.now();
@@ -525,7 +537,7 @@ export default function ModernChat() {
     };
 
     setMessages(prev => [...prev, tempMessage]);
-    setValue("");
+    setMessageInput("");
 
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('sendMessage', {
@@ -546,7 +558,7 @@ export default function ModernChat() {
   };
 
   const handleInputChange = (e) => {
-    setValue(e.target.value);
+    setMessageInput(e.target.value);
 
     if (!selectedUser || !currentUser || !socketRef.current) return;
 
@@ -571,12 +583,6 @@ export default function ModernChat() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
-    }
-  };
-
-  const scrollToBottom = () => {
-    if (listRef.current) {
-      listRef.current.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
     }
   };
 
@@ -756,7 +762,10 @@ export default function ModernChat() {
       });
     }
 
-    if (callTimerRef.current) clearInterval(callTimerRef.current);
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
+    }
 
     cleanupMediaStreams();
     setInCall(false);
@@ -774,8 +783,9 @@ export default function ModernChat() {
     if (localStreamRef.current) {
       const audioTracks = localStreamRef.current.getAudioTracks();
       if (audioTracks.length > 0) {
-        audioTracks.forEach(t => t.enabled = !t.enabled);
-        setIsMuted(!audioTracks[0].enabled);
+        const newState = !audioTracks[0].enabled;
+        audioTracks.forEach(t => t.enabled = newState);
+        setIsMuted(!newState);
       }
     }
   };
@@ -784,8 +794,9 @@ export default function ModernChat() {
     if (localStreamRef.current) {
       const videoTracks = localStreamRef.current.getVideoTracks();
       if (videoTracks.length > 0) {
-        videoTracks.forEach(t => t.enabled = !t.enabled);
-        setIsVideoOff(!videoTracks[0].enabled);
+        const newState = !videoTracks[0].enabled;
+        videoTracks.forEach(t => t.enabled = newState);
+        setIsVideoOff(!newState);
       }
     }
   };
@@ -933,8 +944,6 @@ export default function ModernChat() {
       </div>
     );
   }
-
-  const isUserOnline = onlineUsers.includes(selectedUser?._id);
 
   return (
     <div className="h-screen w-full flex bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white relative overflow-hidden">
@@ -1167,14 +1176,14 @@ export default function ModernChat() {
                 <div className="p-3 border-t border-slate-800 flex gap-2">
                   <input
                     type="text"
-                    value={value}
+                    value={messageInput}
                     onChange={handleInputChange}
                     placeholder="Type message..."
                     className="flex-1 px-3 py-2 bg-slate-800 text-white rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-cyan-500"
                   />
                   <button
                     onClick={handleSend}
-                    disabled={!value.trim()}
+                    disabled={!messageInput.trim()}
                     className="p-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 rounded-lg transition-all"
                   >
                     <Send className="w-4 h-4 text-white" />
@@ -1397,6 +1406,7 @@ export default function ModernChat() {
               />
             ))}
             {isTyping && <TypingIndicator avatar={selectedUser?.username.substring(0, 2).toUpperCase()} />}
+            <div ref={messagesEndRef} />
           </div>
         </div>
 
@@ -1419,7 +1429,7 @@ export default function ModernChat() {
 
               <div className="flex-1 relative">
                 <textarea
-                  value={value}
+                  value={messageInput}
                   onChange={handleInputChange}
                   onKeyDown={onKeyDown}
                   placeholder={randomMatch ? "Chat with your random match..." : "Type your message..."}
@@ -1438,9 +1448,9 @@ export default function ModernChat() {
 
               <button
                 onClick={handleSend}
-                disabled={!value.trim()}
+                disabled={!messageInput.trim()}
                 className={`p-3 rounded-lg transition-all flex-shrink-0 shadow-lg ${
-                  value.trim()
+                  messageInput.trim()
                     ? 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white'
                     : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                 }`}
