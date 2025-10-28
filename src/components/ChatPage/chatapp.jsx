@@ -106,7 +106,7 @@ export default function ModernChat() {
     return localStorage.getItem("token");
   }, []);
 
-  // Start random chat - this is the main function users will use
+  // Start random chat
   const startRandomChat = useCallback(() => {
     if (!socketRef.current || !currentUser) return;
     
@@ -263,7 +263,6 @@ export default function ModernChat() {
         console.log("Socket connected:", socket.id);
         if (user && user._id) {
           socket.emit("register", user._id);
-          // Check if random chat is available
           socket.emit('check-random-chat-availability');
         }
       });
@@ -276,7 +275,7 @@ export default function ModernChat() {
         }
       });
 
-      // Message handling - works for both regular and random chat
+      // Message handling
       socket.on("receiveMessage", (message) => {
         if (selectedUser && message.sender._id === selectedUser._id) {
           const formatted = {
@@ -868,7 +867,7 @@ export default function ModernChat() {
     );
   }
 
-  // Main random chat interface - no user list, just random connections
+  // Main random chat interface
   if (!isInRandomChat && !randomMatch) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -1240,7 +1239,7 @@ export default function ModernChat() {
         </div>
       )}
 
-      {/* Main Chat Area - Clean interface for random chat */}
+      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 shadow-xl">
@@ -1456,7 +1455,7 @@ export default function ModernChat() {
   );
 }
 
-/* ---------- Message components (unchanged) ---------- */
+/* ---------- Message components ---------- */
 
 function MessageRow({ message, showAvatar }) {
   const isMe = message.sender === "me";
