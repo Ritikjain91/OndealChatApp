@@ -20,7 +20,9 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  Camera
+  Camera,
+  Shuffle,
+  UserPlus
 } from "lucide-react";
 import { io } from "socket.io-client";
 
@@ -41,6 +43,11 @@ export default function ModernChat() {
   const [showUserList, setShowUserList] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Random chat states
+  const [isFindingRandom, setIsFindingRandom] = useState(false);
+  const [randomChatAvailable, setRandomChatAvailable] = useState(false);
+  const [randomMatch, setRandomMatch] = useState(null);
+
   // Call states
   const [inCall, setInCall] = useState(false);
   const [callType, setCallType] = useState(null);
@@ -59,8 +66,8 @@ export default function ModernChat() {
   const socketRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const localVideoRef = useRef(null);
-  const remoteVideosRef = useRef({}); // userId -> MediaStream
-  const peerConnectionsRef = useRef({}); // userId -> RTCPeerConnection
+  const remoteVideosRef = useRef({});
+  const peerConnectionsRef = useRef({});
   const localStreamRef = useRef(null);
   const screenStreamRef = useRef(null);
   const callRoomIdRef = useRef(null);
@@ -100,6 +107,7 @@ export default function ModernChat() {
     return localStorage.getItem("token");
   }, []);
 
+  // Fetch available users for regular chat
   const fetchUsers = useCallback(async () => {
     try {
       const token = getToken();
@@ -116,10 +124,6 @@ export default function ModernChat() {
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
-
-        if (data.length > 0 && (!selectedUser || !data.find(u => u._id === selectedUser._id))) {
-          setSelectedUser(data[0]);
-        }
       } else if (response.status === 401) {
         localStorage.removeItem("token");
         setCurrentUser(null);
@@ -127,7 +131,35 @@ export default function ModernChat() {
     } catch (error) {
       console.error("Failed to fetch users:", error);
     }
-  }, [selectedUser, getToken]);
+  }, [getToken]);
+
+  // Start random chat
+  const startRandomChat = useCallback(() => {
+    if (!socketRef.current || !currentUser) return;
+    
+    setIsFindingRandom(true);
+    setRandomMatch(null);
+    socketRef.current.emit('start-random-chat', {
+      userId: currentUser._id,
+      username: currentUser.username
+    });
+  }, [currentUser]);
+
+  // Stop random chat
+  const stopRandomChat = useCallback(() => {
+    if (!socketRef.current || !currentUser) return;
+    
+    setIsFindingRandom(false);
+    setRandomMatch(null);
+    socketRef.current.emit('stop-random-chat', {
+      userId: currentUser._id
+    });
+    
+    // Reset to regular chat mode
+    if (users.length > 0) {
+      setSelectedUser(users[0]);
+    }
+  }, [currentUser, users]);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -189,29 +221,23 @@ export default function ModernChat() {
     callRoomIdRef.current = null;
   }, []);
 
-  // Create RTCPeerConnection for a remote userId
   const createPeerConnection = useCallback((userId) => {
     console.log(`Creating peer connection for: ${userId}`);
     
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Add local tracks if available
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         try {
           pc.addTrack(track, localStreamRef.current);
-          console.log(`Added ${track.kind} track to peer connection for ${userId}`);
         } catch (err) {
           console.warn('Error adding track to pc', err);
         }
       });
-    } else {
-      console.log('No local stream available when creating PC for', userId);
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
-        console.log(`Sending ICE candidate to ${userId}`);
         socketRef.current.emit('ice-candidate', {
           candidate: event.candidate,
           to: userId,
@@ -221,36 +247,16 @@ export default function ModernChat() {
     };
 
     pc.ontrack = (event) => {
-      console.log(`Received remote track from ${userId}. streams:`, event.streams && event.streams[0]);
       if (event.streams && event.streams[0]) {
         remoteVideosRef.current[userId] = event.streams[0];
-        // Force re-render so the <video> elements update their refs
-        setCallParticipants(prev => {
-          // keep participants array unchanged but force update
-          return [...prev];
-        });
-        setCallStatus("Connected");
-      } else {
-        // If no streams array, try building one from tracks (fallback)
-        const newStream = new MediaStream();
-        if (event.track) newStream.addTrack(event.track);
-        remoteVideosRef.current[userId] = newStream;
         setCallParticipants(prev => [...prev]);
         setCallStatus("Connected");
       }
     };
 
     pc.onconnectionstatechange = () => {
-      console.log(`Connection state for ${userId}: ${pc.connectionState}`);
       const status = pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1);
       setCallStatus(status);
-      if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-        console.log(`Connection ${pc.connectionState} for ${userId}`);
-      }
-    };
-
-    pc.oniceconnectionstatechange = () => {
-      console.log(`ICE connection state for ${userId}: ${pc.iceConnectionState}`);
     };
 
     peerConnectionsRef.current[userId] = pc;
@@ -274,6 +280,8 @@ export default function ModernChat() {
         console.log("Socket connected:", socket.id);
         if (user && user._id) {
           socket.emit("register", user._id);
+          // Check if random chat is available
+          socket.emit('check-random-chat-availability');
         }
       });
       
@@ -285,6 +293,7 @@ export default function ModernChat() {
         }
       });
 
+      // Regular message handling
       socket.on("receiveMessage", (message) => {
         if (selectedUser && message.sender._id === selectedUser._id) {
           const formatted = {
@@ -329,25 +338,45 @@ export default function ModernChat() {
         if (selectedUser && userId === selectedUser._id) setIsTyping(false);
       });
 
-      // Incoming call
+      // Random chat events
+      socket.on("random-chat-available", (available) => {
+        setRandomChatAvailable(available);
+      });
+
+      socket.on("random-match-found", (matchedUser) => {
+        setIsFindingRandom(false);
+        setRandomMatch(matchedUser);
+        setSelectedUser(matchedUser);
+        setMessages([]); // Clear previous messages
+      });
+
+      socket.on("random-match-left", () => {
+        setRandomMatch(null);
+        setIsFindingRandom(false);
+        alert("Your random chat partner has left the chat");
+        if (users.length > 0) {
+          setSelectedUser(users[0]);
+        }
+      });
+
+      socket.on("no-random-users", () => {
+        setIsFindingRandom(false);
+        alert("No random users available at the moment. Please try again later.");
+      });
+
+      // Call events (same as before)
       socket.on("incoming-call", ({ from, callType: type, roomId, caller }) => {
-        console.log("Incoming call from:", from, "room:", roomId, "type:", type);
-        // Use provided caller if available, otherwise try find in users
-        const c = (caller && caller._id) ? (users.find(u => u._id === caller._id) || { _id: caller._id, username: users.find(u => u._id === caller._id)?.username || 'Unknown' }) : (users.find(u => u._id === from) || { _id: from, username: "Unknown User" });
+        const c = caller ? (users.find(u => u._id === caller._id) || { _id: caller._id, username: 'Unknown' }) : (users.find(u => u._id === from) || { _id: from, username: "Unknown User" });
         setIncomingCall({ caller: c, callType: type, roomId });
       });
 
-      // Callee accepted -> caller receives this
       socket.on("call-accepted", async ({ from, roomId }) => {
-        console.log("Call accepted by:", from, "room:", roomId);
         setCallStatus("Connecting...");
-        
         const userObj = users.find(u => u._id === from) || { _id: from, username: 'Unknown' };
         if (!callParticipants.find(p => p._id === from)) {
           setCallParticipants(prev => [...prev, userObj]);
         }
         
-        // ensure local stream present (caller should have started local stream before initiating the call)
         const pc = createPeerConnection(from);
         try {
           const offer = await pc.createOffer();
@@ -364,20 +393,16 @@ export default function ModernChat() {
       });
 
       socket.on("call-rejected", ({ from }) => {
-        console.log("Call rejected by:", from);
         alert(`${users.find(u => u._id === from)?.username || 'User'} rejected the call`);
         endCall();
       });
 
       socket.on("call-ended", ({ from }) => {
-        console.log("Call ended by:", from);
         alert(`${users.find(u => u._id === from)?.username || 'User'} ended the call`);
         endCall();
       });
 
-      // Received an offer (callee side)
       socket.on("webrtc-offer", async ({ offer, from, roomId }) => {
-        console.log("Received webrtc-offer from", from, "room:", roomId);
         try {
           const pc = createPeerConnection(from);
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
@@ -395,9 +420,7 @@ export default function ModernChat() {
         }
       });
 
-      // Received answer (caller side)
       socket.on("webrtc-answer", async ({ answer, from }) => {
-        console.log("Received webrtc-answer from", from);
         const pc = peerConnectionsRef.current[from];
         if (pc) {
           try {
@@ -405,12 +428,9 @@ export default function ModernChat() {
           } catch (error) {
             console.error("Error setting remote description:", error);
           }
-        } else {
-          console.warn("No peerConnection found for", from);
         }
       });
 
-      // Received ICE candidate
       socket.on("ice-candidate", async ({ candidate, from }) => {
         const pc = peerConnectionsRef.current[from];
         if (pc && candidate) {
@@ -419,8 +439,6 @@ export default function ModernChat() {
           } catch (error) {
             console.error("Error adding ICE candidate:", error);
           }
-        } else {
-          console.warn("ICE candidate received but no pc for", from);
         }
       });
 
@@ -523,12 +541,22 @@ export default function ModernChat() {
     setValue("");
 
     if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('sendMessage', {
-        senderId: currentUser._id,
-        receiverId: selectedUser._id,
-        text,
-        tempId
-      });
+      // For random chat, use a different event
+      if (randomMatch) {
+        socketRef.current.emit('send-random-message', {
+          senderId: currentUser._id,
+          receiverId: selectedUser._id,
+          text,
+          tempId
+        });
+      } else {
+        socketRef.current.emit('sendMessage', {
+          senderId: currentUser._id,
+          receiverId: selectedUser._id,
+          text,
+          tempId
+        });
+      }
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -589,6 +617,8 @@ export default function ModernChat() {
     setCurrentUser(null);
     setSelectedUser(null);
     setMessages([]);
+    setRandomMatch(null);
+    setIsFindingRandom(false);
     if (socketRef.current) {
       socketRef.current.disconnect();
       socketRef.current = null;
@@ -603,7 +633,6 @@ export default function ModernChat() {
     }
 
     try {
-      console.log("Starting call...");
       setCallStatus("Starting call...");
       setCallDuration(0);
 
@@ -671,7 +700,6 @@ export default function ModernChat() {
     if (!incomingCall) return;
 
     try {
-      console.log("Accepting call...");
       setCallStatus("Accepting call...");
       setCallDuration(0);
 
@@ -860,50 +888,78 @@ export default function ModernChat() {
     );
   }
 
-  if (!selectedUser) {
+  if (!selectedUser && !randomMatch) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
         <div className="text-center max-w-md px-4">
           <div className="w-20 h-20 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-2xl">
             <Users className="w-10 h-10 text-white" />
           </div>
-          <h2 className="text-2xl font-bold mb-2">Select a Chat</h2>
-          <p className="text-slate-400 mb-6">Choose from {users.length} available user{users.length !== 1 ? 's' : ''}</p>
-          <div className="space-y-3 max-h-96 overflow-y-auto">
-            {users.map(user => (
-              <button
-                key={user._id}
-                onClick={() => setSelectedUser(user)}
-                className="w-full p-4 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 rounded-xl transition-all flex items-center space-x-3 group hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/20"
-              >
-                <div className="relative">
-                  <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold group-hover:scale-105 transition-transform shadow-lg">
-                    {user.username.substring(0, 2).toUpperCase()}
-                  </div>
-                  {onlineUsers.includes(user._id) && (
-                    <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
-                  )}
+          <h2 className="text-2xl font-bold mb-2">Start Chatting</h2>
+          <p className="text-slate-400 mb-6">Choose how you want to connect</p>
+          
+          {/* Random Chat Option */}
+          <div className="mb-6 p-6 bg-slate-800/50 rounded-2xl border border-slate-700">
+            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-2xl">
+              <Shuffle className="w-8 h-8 text-white" />
+            </div>
+            <h3 className="text-lg font-bold mb-2">Random Chat</h3>
+            <p className="text-slate-400 text-sm mb-4">Chat with random people online</p>
+            <button
+              onClick={startRandomChat}
+              disabled={!randomChatAvailable || isFindingRandom}
+              className="w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-700 disabled:to-slate-700 rounded-xl transition-all font-semibold shadow-lg"
+            >
+              {isFindingRandom ? (
+                <div className="flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Finding Match...
                 </div>
-                <div className="flex-1 text-left">
-                  <p className="font-semibold text-white">{user.username}</p>
-                  <p className="text-sm text-slate-400">{user.email}</p>
-                </div>
-                <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  onlineUsers.includes(user._id) 
-                    ? 'bg-emerald-500/20 text-emerald-400' 
-                    : 'bg-slate-500/20 text-slate-400'
-                }`}>
-                  {onlineUsers.includes(user._id) ? 'Online' : 'Offline'}
-                </div>
-              </button>
-            ))}
+              ) : (
+                "Start Random Chat"
+              )}
+            </button>
           </div>
+
+          {/* Regular Users List */}
+          {users.length > 0 && (
+            <div className="space-y-3 max-h-96 overflow-y-auto">
+              <p className="text-slate-400 text-sm mb-2">Or chat with known users:</p>
+              {users.map(user => (
+                <button
+                  key={user._id}
+                  onClick={() => setSelectedUser(user)}
+                  className="w-full p-4 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 rounded-xl transition-all flex items-center space-x-3 group hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/20"
+                >
+                  <div className="relative">
+                    <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold group-hover:scale-105 transition-transform shadow-lg">
+                      {user.username.substring(0, 2).toUpperCase()}
+                    </div>
+                    {onlineUsers.includes(user._id) && (
+                      <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
+                    )}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-semibold text-white">{user.username}</p>
+                    <p className="text-sm text-slate-400">{user.email}</p>
+                  </div>
+                  <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                    onlineUsers.includes(user._id) 
+                      ? 'bg-emerald-500/20 text-emerald-400' 
+                      : 'bg-slate-500/20 text-slate-400'
+                  }`}>
+                    {onlineUsers.includes(user._id) ? 'Online' : 'Offline'}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  const isUserOnline = onlineUsers.includes(selectedUser._id);
+  const isUserOnline = onlineUsers.includes(selectedUser?._id);
 
   return (
     <div className="h-screen w-full flex bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white relative overflow-hidden">
@@ -1224,15 +1280,48 @@ export default function ModernChat() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Random Chat Option in Sidebar */}
+          <div className="mb-4 p-4 bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-xl border border-purple-500/30">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white">
+                <Shuffle className="w-5 h-5" />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-white">Random Chat</p>
+                <p className="text-xs text-purple-300">
+                  {randomMatch ? `Connected to ${randomMatch.username}` : 'Chat with strangers'}
+                </p>
+              </div>
+            </div>
+            {randomMatch ? (
+              <button
+                onClick={stopRandomChat}
+                className="w-full mt-3 px-3 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white text-sm transition-all"
+              >
+                Leave Random Chat
+              </button>
+            ) : (
+              <button
+                onClick={startRandomChat}
+                disabled={isFindingRandom}
+                className="w-full mt-3 px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-700 disabled:to-slate-700 rounded-lg text-white text-sm transition-all"
+              >
+                {isFindingRandom ? 'Finding...' : 'Start Random'}
+              </button>
+            )}
+          </div>
+
+          {/* Regular Users */}
           {users.map(user => (
             <button
               key={user._id}
               onClick={() => {
                 setSelectedUser(user);
+                setRandomMatch(null);
                 setShowUserList(false);
               }}
               className={`w-full p-4 rounded-xl transition-all flex items-center space-x-4 group ${
-                selectedUser._id === user._id
+                selectedUser?._id === user._id && !randomMatch
                   ? 'bg-gradient-to-r from-cyan-600/30 to-blue-600/30 border border-cyan-500/50 shadow-lg'
                   : 'bg-slate-800/30 hover:bg-slate-700/50 border border-slate-700'
               }`}
@@ -1268,23 +1357,44 @@ export default function ModernChat() {
               </button>
 
               <div className="relative">
-                <div className="w-14 h-14 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-semibold shadow-lg">
-                  {selectedUser.username.substring(0, 2).toUpperCase()}
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-semibold shadow-lg ${
+                  randomMatch 
+                    ? 'bg-gradient-to-br from-purple-500 to-pink-500' 
+                    : 'bg-gradient-to-br from-cyan-400 to-blue-500'
+                }`}>
+                  {selectedUser?.username.substring(0, 2).toUpperCase()}
                 </div>
-                {isUserOnline && (
+                {isUserOnline && !randomMatch && (
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
+                )}
+                {randomMatch && (
+                  <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
                 )}
               </div>
 
               <div className="flex-1 min-w-0">
-                <h2 className="text-xl font-bold text-white truncate">{selectedUser.username}</h2>
                 <div className="flex items-center space-x-3">
-                  {isUserOnline && (
+                  <h2 className="text-xl font-bold text-white truncate">
+                    {selectedUser?.username}
+                    {randomMatch && (
+                      <span className="ml-2 text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
+                        Random
+                      </span>
+                    )}
+                  </h2>
+                </div>
+                <div className="flex items-center space-x-3">
+                  {isUserOnline && !randomMatch && (
                     <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full shadow-lg"></div>
+                  )}
+                  {randomMatch && (
+                    <div className="w-2.5 h-2.5 bg-purple-400 rounded-full shadow-lg"></div>
                   )}
                   <p className="text-sm text-slate-300">
                     {isTyping ? (
                       <span className="text-cyan-400 font-semibold">typing...</span>
+                    ) : randomMatch ? (
+                      <span className="text-purple-400">random chat</span>
                     ) : isUserOnline ? (
                       <span className="text-emerald-400">online</span>
                     ) : (
@@ -1319,7 +1429,7 @@ export default function ModernChat() {
               )}
 
               <div className="flex items-center gap-2">
-                {!showSearch && (
+                {!showSearch && !randomMatch && (
                   <>
                     <button 
                       onClick={() => startCall('audio')}
@@ -1336,6 +1446,16 @@ export default function ModernChat() {
                       <Video className="w-6 h-6" />
                     </button>
                   </>
+                )}
+
+                {randomMatch && (
+                  <button
+                    onClick={stopRandomChat}
+                    className="p-2.5 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition-all shadow-lg"
+                    title="Leave Random Chat"
+                  >
+                    <LogOut className="w-6 h-6" />
+                  </button>
                 )}
 
                 <button
@@ -1375,6 +1495,15 @@ export default function ModernChat() {
           }}
         >
           <div className="p-8 space-y-6">
+            {randomMatch && messages.length === 0 && (
+              <div className="text-center py-12">
+                <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-2xl">
+                  <UserPlus className="w-10 h-10 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Random Chat Started!</h3>
+                <p className="text-slate-400">You're now connected with a random user. Say hello!</p>
+              </div>
+            )}
             {filteredMessages.map((message, index) => (
               <MessageRow
                 key={message.id}
@@ -1385,7 +1514,7 @@ export default function ModernChat() {
                 }
               />
             ))}
-            {isTyping && <TypingIndicator avatar={selectedUser.username.substring(0, 2).toUpperCase()} />}
+            {isTyping && <TypingIndicator avatar={selectedUser?.username.substring(0, 2).toUpperCase()} />}
           </div>
         </div>
 
@@ -1411,7 +1540,7 @@ export default function ModernChat() {
                   value={value}
                   onChange={handleInputChange}
                   onKeyDown={onKeyDown}
-                  placeholder="Type your message..."
+                  placeholder={randomMatch ? "Chat with your random match..." : "Type your message..."}
                   rows="1"
                   className="w-full px-5 py-3 border border-slate-600 rounded-xl bg-slate-800/50 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none text-base max-h-32 overflow-y-auto backdrop-blur-sm shadow-lg"
                   style={{
