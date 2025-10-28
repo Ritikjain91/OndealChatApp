@@ -287,9 +287,25 @@ export default function ModernChat() {
         }
       });
 
-      // Message handling
+      // FIXED: Improved message handling for random chat
       socket.on("receiveMessage", (message) => {
-        if (selectedUser && message.sender._id === selectedUser._id) {
+        console.log("Received message:", message);
+        
+        // For random chat, accept messages from the current random match
+        if (isInRandomChat && randomMatch && message.sender._id === randomMatch._id) {
+          const formatted = {
+            id: message._id,
+            sender: "them",
+            name: message.sender.username,
+            avatar: message.sender.username.substring(0, 2).toUpperCase(),
+            text: message.text,
+            time: new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            status: "delivered"
+          };
+          setMessages(prev => [...prev, formatted]);
+        }
+        // For regular chat, use selectedUser check
+        else if (selectedUser && message.sender._id === selectedUser._id) {
           const formatted = {
             id: message._id,
             sender: "them",
@@ -322,11 +338,15 @@ export default function ModernChat() {
       });
 
       socket.on("userTyping", ({ userId }) => {
-        if (selectedUser && userId === selectedUser._id) setIsTyping(true);
+        if ((selectedUser && userId === selectedUser._id) || (randomMatch && userId === randomMatch._id)) {
+          setIsTyping(true);
+        }
       });
       
       socket.on("userStoppedTyping", ({ userId }) => {
-        if (selectedUser && userId === selectedUser._id) setIsTyping(false);
+        if ((selectedUser && userId === selectedUser._id) || (randomMatch && userId === randomMatch._id)) {
+          setIsTyping(false);
+        }
       });
 
       // Random chat events
@@ -340,6 +360,9 @@ export default function ModernChat() {
         setSelectedUser(matchedUser);
         setMessages([]);
         console.log("Random match found:", matchedUser.username);
+        
+        // Fetch messages for the new match
+        fetchMessagesForUser(matchedUser);
       });
 
       socket.on("random-match-left", () => {
@@ -450,44 +473,47 @@ export default function ModernChat() {
     } catch (error) {
       console.error("Failed to initialize socket:", error);
     }
-  }, [currentUser, callParticipants, createPeerConnection, selectedUser, isInRandomChat, autoReconnectRandomChat]);
+  }, [currentUser, callParticipants, createPeerConnection, selectedUser, isInRandomChat, randomMatch, autoReconnectRandomChat]);
+
+  // NEW: Separate function to fetch messages for a user
+  const fetchMessagesForUser = useCallback(async (user) => {
+    if (!user || !currentUser) return;
+    
+    try {
+      const token = getToken();
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/messages/${user._id}`, {
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        },
+        credentials: "include"
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const formattedMessages = data.map(msg => ({
+          id: msg._id,
+          sender: msg.sender._id === currentUser._id ? "me" : "them",
+          name: msg.sender._id === currentUser._id ? "You" : msg.sender.username,
+          avatar: msg.sender.username.substring(0, 2).toUpperCase(),
+          text: msg.text,
+          time: new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          status: "delivered"
+        }));
+        setMessages(formattedMessages);
+      }
+    } catch (error) {
+      console.error("Failed to fetch messages:", error);
+    }
+  }, [currentUser, getToken]);
 
   useEffect(() => {
-    const fetchMessages = async () => {
-      if (!selectedUser || !currentUser) return;
-      
-      try {
-        const token = getToken();
-        if (!token) return;
-
-        const response = await fetch(`${API_URL}/messages/${selectedUser._id}`, {
-          headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-          },
-          credentials: "include"
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          const formattedMessages = data.map(msg => ({
-            id: msg._id,
-            sender: msg.sender._id === currentUser._id ? "me" : "them",
-            name: msg.sender._id === currentUser._id ? "You" : msg.sender.username,
-            avatar: msg.sender.username.substring(0, 2).toUpperCase(),
-            text: msg.text,
-            time: new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            status: "delivered"
-          }));
-          setMessages(formattedMessages);
-        }
-      } catch (error) {
-        console.error("Failed to fetch messages:", error);
-      }
-    };
-
-    fetchMessages();
-  }, [selectedUser, currentUser, getToken]);
+    if (selectedUser && !isInRandomChat) {
+      fetchMessagesForUser(selectedUser);
+    }
+  }, [selectedUser, isInRandomChat, fetchMessagesForUser]);
 
   useEffect(() => {
     if (listRef.current) {
@@ -520,7 +546,11 @@ export default function ModernChat() {
 
   const handleSend = async () => {
     const text = messageInput.trim();
-    if (!text || !selectedUser || !currentUser) return;
+    if (!text || !currentUser) return;
+
+    // Determine the receiver - either selectedUser or randomMatch
+    const receiver = selectedUser || randomMatch;
+    if (!receiver) return;
 
     const tempId = 'temp-' + Date.now();
     const now = new Date();
@@ -542,7 +572,7 @@ export default function ModernChat() {
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('sendMessage', {
         senderId: currentUser._id,
-        receiverId: selectedUser._id,
+        receiverId: receiver._id,
         text,
         tempId
       });
@@ -552,7 +582,7 @@ export default function ModernChat() {
       }
       socketRef.current.emit('stopTyping', {
         senderId: currentUser._id,
-        receiverId: selectedUser._id
+        receiverId: receiver._id
       });
     }
   };
@@ -560,11 +590,15 @@ export default function ModernChat() {
   const handleInputChange = (e) => {
     setMessageInput(e.target.value);
 
-    if (!selectedUser || !currentUser || !socketRef.current) return;
+    if (!currentUser || !socketRef.current) return;
+
+    // Determine the receiver - either selectedUser or randomMatch
+    const receiver = selectedUser || randomMatch;
+    if (!receiver) return;
 
     socketRef.current.emit('typing', {
       senderId: currentUser._id,
-      receiverId: selectedUser._id
+      receiverId: receiver._id
     });
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -573,7 +607,7 @@ export default function ModernChat() {
       if (socketRef.current) {
         socketRef.current.emit('stopTyping', {
           senderId: currentUser._id,
-          receiverId: selectedUser._id
+          receiverId: receiver._id
         });
       }
     }, 2000);
@@ -611,7 +645,9 @@ export default function ModernChat() {
   };
 
   const startCall = async (type) => {
-    if (!selectedUser || !currentUser) {
+    // Determine the receiver - either selectedUser or randomMatch
+    const receiver = selectedUser || randomMatch;
+    if (!receiver || !currentUser) {
       alert("Please start a chat first");
       return;
     }
@@ -652,12 +688,12 @@ export default function ModernChat() {
 
       setCallType(type);
       setInCall(true);
-      setCallParticipants([selectedUser]);
+      setCallParticipants([receiver]);
       setCallStatus("Calling...");
 
       if (socketRef.current) {
         socketRef.current.emit('initiate-call', {
-          to: selectedUser._id,
+          to: receiver._id,
           from: currentUser._id,
           callType: type,
           roomId
@@ -1001,7 +1037,7 @@ export default function ModernChat() {
                 {currentUser.username.substring(0, 2).toUpperCase()}
               </div>
               <div>
-                <h3 className="font-bold text-white text-xl">{selectedUser.username}</h3>
+                <h3 className="font-bold text-white text-xl">{selectedUser?.username || randomMatch?.username}</h3>
                 <div className="flex items-center space-x-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${
                     callStatus === 'Connected' ? 'bg-emerald-400' : 
@@ -1260,7 +1296,7 @@ export default function ModernChat() {
                     ? 'bg-gradient-to-br from-purple-500 to-pink-500' 
                     : 'bg-gradient-to-br from-cyan-400 to-blue-500'
                 }`}>
-                  {selectedUser?.username.substring(0, 2).toUpperCase()}
+                  {(selectedUser?.username || randomMatch?.username)?.substring(0, 2).toUpperCase()}
                 </div>
                 {randomMatch && (
                   <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-purple-400 border-2 border-slate-900 rounded-full shadow-lg"></div>
@@ -1270,7 +1306,7 @@ export default function ModernChat() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center space-x-3">
                   <h2 className="text-xl font-bold text-white truncate">
-                    {selectedUser?.username}
+                    {selectedUser?.username || randomMatch?.username}
                     {randomMatch && (
                       <span className="ml-2 text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-full">
                         Random Chat
@@ -1390,7 +1426,7 @@ export default function ModernChat() {
                 <div className="w-20 h-20 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-2xl">
                   <UserPlus className="w-10 h-10 text-white" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Connected with {selectedUser?.username}!</h3>
+                <h3 className="text-xl font-bold text-white mb-2">Connected with {selectedUser?.username || randomMatch?.username}!</h3>
                 <p className="text-slate-400">Start the conversation by saying hello!</p>
                 <p className="text-slate-500 text-sm mt-2">When they leave, you'll automatically connect with someone new</p>
               </div>
@@ -1405,7 +1441,7 @@ export default function ModernChat() {
                 }
               />
             ))}
-            {isTyping && <TypingIndicator avatar={selectedUser?.username.substring(0, 2).toUpperCase()} />}
+            {isTyping && <TypingIndicator avatar={(selectedUser?.username || randomMatch?.username)?.substring(0, 2).toUpperCase()} />}
             <div ref={messagesEndRef} />
           </div>
         </div>
