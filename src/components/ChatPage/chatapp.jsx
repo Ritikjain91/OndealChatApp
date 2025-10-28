@@ -107,7 +107,6 @@ export default function ModernChat() {
     return localStorage.getItem("token");
   }, []);
 
-  // Fetch available users for regular chat
   const fetchUsers = useCallback(async () => {
     try {
       const token = getToken();
@@ -124,6 +123,11 @@ export default function ModernChat() {
       if (response.ok) {
         const data = await response.json();
         setUsers(data);
+
+        // Only set selected user if not in random chat and users exist
+        if (data.length > 0 && !randomMatch && (!selectedUser || !data.find(u => u._id === selectedUser._id))) {
+          setSelectedUser(data[0]);
+        }
       } else if (response.status === 401) {
         localStorage.removeItem("token");
         setCurrentUser(null);
@@ -131,7 +135,7 @@ export default function ModernChat() {
     } catch (error) {
       console.error("Failed to fetch users:", error);
     }
-  }, [getToken]);
+  }, [selectedUser, getToken, randomMatch]);
 
   // Start random chat
   const startRandomChat = useCallback(() => {
@@ -159,6 +163,7 @@ export default function ModernChat() {
     if (users.length > 0) {
       setSelectedUser(users[0]);
     }
+    setMessages([]);
   }, [currentUser, users]);
 
   useEffect(() => {
@@ -347,7 +352,8 @@ export default function ModernChat() {
         setIsFindingRandom(false);
         setRandomMatch(matchedUser);
         setSelectedUser(matchedUser);
-        setMessages([]); // Clear previous messages
+        setMessages([]);
+        console.log("Random match found:", matchedUser.username);
       });
 
       socket.on("random-match-left", () => {
@@ -357,14 +363,24 @@ export default function ModernChat() {
         if (users.length > 0) {
           setSelectedUser(users[0]);
         }
+        setMessages([]);
       });
 
-      socket.on("no-random-users", () => {
+      socket.on("random-chat-waiting", (data) => {
+        console.log("Waiting for random match...", data);
+      });
+
+      socket.on("random-chat-error", (data) => {
         setIsFindingRandom(false);
-        alert("No random users available at the moment. Please try again later.");
+        alert(data.message || "Error finding random chat");
       });
 
-      // Call events (same as before)
+      socket.on("random-chat-stopped", () => {
+        setIsFindingRandom(false);
+        setRandomMatch(null);
+      });
+
+      // Call events
       socket.on("incoming-call", ({ from, callType: type, roomId, caller }) => {
         const c = caller ? (users.find(u => u._id === caller._id) || { _id: caller._id, username: 'Unknown' }) : (users.find(u => u._id === from) || { _id: from, username: "Unknown User" });
         setIncomingCall({ caller: c, callType: type, roomId });
@@ -541,22 +557,13 @@ export default function ModernChat() {
     setValue("");
 
     if (socketRef.current && socketRef.current.connected) {
-      // For random chat, use a different event
-      if (randomMatch) {
-        socketRef.current.emit('send-random-message', {
-          senderId: currentUser._id,
-          receiverId: selectedUser._id,
-          text,
-          tempId
-        });
-      } else {
-        socketRef.current.emit('sendMessage', {
-          senderId: currentUser._id,
-          receiverId: selectedUser._id,
-          text,
-          tempId
-        });
-      }
+      // For random chat, use the same event as regular chat
+      socketRef.current.emit('sendMessage', {
+        senderId: currentUser._id,
+        receiverId: selectedUser._id,
+        text,
+        tempId
+      });
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -632,7 +639,14 @@ export default function ModernChat() {
       return;
     }
 
+    // Don't allow calls in random chat mode
+    if (randomMatch) {
+      alert("Calls are not available in random chat mode");
+      return;
+    }
+
     try {
+      console.log("Starting call...");
       setCallStatus("Starting call...");
       setCallDuration(0);
 
@@ -700,6 +714,7 @@ export default function ModernChat() {
     if (!incomingCall) return;
 
     try {
+      console.log("Accepting call...");
       setCallStatus("Accepting call...");
       setCallDuration(0);
 
@@ -1303,7 +1318,7 @@ export default function ModernChat() {
             ) : (
               <button
                 onClick={startRandomChat}
-                disabled={isFindingRandom}
+                disabled={isFindingRandom || !randomChatAvailable}
                 className="w-full mt-3 px-3 py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-slate-700 disabled:to-slate-700 rounded-lg text-white text-sm transition-all"
               >
                 {isFindingRandom ? 'Finding...' : 'Start Random'}
