@@ -206,49 +206,78 @@ export default function ModernChat() {
     callRoomIdRef.current = null;
   }, []);
 
+  // FIXED: Improved createPeerConnection function
   const createPeerConnection = useCallback((userId) => {
     console.log(`Creating peer connection for: ${userId}`);
     
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    try {
+      const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        try {
-          pc.addTrack(track, localStreamRef.current);
-        } catch (err) {
-          console.warn('Error adding track to pc', err);
-        }
-      });
-    }
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && socketRef.current) {
-        socketRef.current.emit('ice-candidate', {
-          candidate: event.candidate,
-          to: userId,
-          roomId: callRoomIdRef.current
+      // Add local stream tracks if available
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => {
+          try {
+            pc.addTrack(track, localStreamRef.current);
+            console.log(`Added ${track.kind} track to peer connection`);
+          } catch (err) {
+            console.warn('Error adding track to pc:', err);
+          }
         });
       }
-    };
 
-    pc.ontrack = (event) => {
-      if (event.streams && event.streams[0]) {
-        remoteVideosRef.current[userId] = event.streams[0];
-        setCallParticipants(prev => [...prev]);
-        setCallStatus("Connected");
-      }
-    };
+      // Handle ICE candidates
+      pc.onicecandidate = (event) => {
+        console.log('ICE candidate generated:', event.candidate);
+        if (event.candidate && socketRef.current) {
+          socketRef.current.emit('ice-candidate', {
+            candidate: event.candidate,
+            to: userId,
+            roomId: callRoomIdRef.current
+          });
+        }
+      };
 
-    pc.onconnectionstatechange = () => {
-      const status = pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1);
-      setCallStatus(status);
-    };
+      // Handle incoming tracks
+      pc.ontrack = (event) => {
+        console.log('Received remote track:', event.streams);
+        if (event.streams && event.streams[0]) {
+          remoteVideosRef.current[userId] = event.streams[0];
+          console.log('Remote stream set for user:', userId);
+          
+          // Force UI update
+          setCallParticipants(prev => {
+            const updated = [...prev];
+            setCallStatus("Connected");
+            return updated;
+          });
+        }
+      };
 
-    peerConnectionsRef.current[userId] = pc;
-    return pc;
+      pc.onconnectionstatechange = () => {
+        console.log(`Peer connection state changed to: ${pc.connectionState}`);
+        const status = pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1);
+        setCallStatus(status);
+        
+        if (pc.connectionState === 'connected') {
+          console.log('Peer connection established successfully');
+        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.error('Peer connection failed');
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        console.log(`ICE connection state: ${pc.iceConnectionState}`);
+      };
+
+      peerConnectionsRef.current[userId] = pc;
+      return pc;
+    } catch (error) {
+      console.error('Error creating peer connection:', error);
+      return null;
+    }
   }, []);
 
-  // FIXED: Proper socket initialization with correct message handling
+  // FIXED: Improved socket initialization with better call handling
   const initSocket = useCallback((token, user) => {
     if (socketRef.current) return;
     if (!token) return;
@@ -278,7 +307,7 @@ export default function ModernChat() {
         }
       });
 
-      // FIXED: Unified message handling for both random and regular chats
+      // Message handling
       socket.on("receiveMessage", (messageData) => {
         console.log("Received real-time message:", messageData);
         
@@ -298,7 +327,6 @@ export default function ModernChat() {
         setMessages(prev => [...prev, formattedMessage]);
       });
 
-      // FIXED: Handle message sent confirmation
       socket.on("messageSent", (payload) => {
         console.log("Message sent confirmation:", payload);
         const { tempId, message } = payload || {};
@@ -321,7 +349,7 @@ export default function ModernChat() {
         setOnlineUsers(users);
       });
 
-      // FIXED: Typing indicators
+      // Typing indicators
       socket.on("userTyping", ({ userId, username }) => {
         const currentPartner = selectedUser || randomMatch;
         if (currentPartner && userId === currentPartner._id) {
@@ -380,20 +408,28 @@ export default function ModernChat() {
         setIsInRandomChat(false);
       });
 
-      // Call events (keep your existing call handlers)
-      socket.on("incoming-call", ({ from, callType: type, roomId, caller }) => {
+      // FIXED: Improved call event handlers
+      socket.on("incoming-call", async ({ from, callType: type, roomId, caller }) => {
+        console.log("Incoming call from:", caller);
         const c = caller || { _id: from, username: "Random User" };
         setIncomingCall({ caller: c, callType: type, roomId });
       });
 
       socket.on("call-accepted", async ({ from, roomId }) => {
+        console.log("Call accepted by:", from);
         setCallStatus("Connecting...");
+        
         const userObj = { _id: from, username: 'Random User' };
         if (!callParticipants.find(p => p._id === from)) {
           setCallParticipants(prev => [...prev, userObj]);
         }
         
         const pc = createPeerConnection(from);
+        if (!pc) {
+          console.error("Failed to create peer connection");
+          return;
+        }
+
         try {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
@@ -403,6 +439,7 @@ export default function ModernChat() {
             to: from,
             roomId
           });
+          console.log("Sent WebRTC offer to:", from);
         } catch (error) {
           console.error("Error creating offer:", error);
         }
@@ -414,44 +451,60 @@ export default function ModernChat() {
       });
 
       socket.on("call-ended", ({ from }) => {
+        console.log("Call ended by:", from);
         alert(`User ended the call`);
         endCall();
       });
 
       socket.on("webrtc-offer", async ({ offer, from, roomId }) => {
+        console.log("Received WebRTC offer from:", from);
         try {
           const pc = createPeerConnection(from);
+          if (!pc) {
+            console.error("Failed to create peer connection for offer");
+            return;
+          }
+
           await pc.setRemoteDescription(new RTCSessionDescription(offer));
+          console.log("Set remote description from offer");
           
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
+          console.log("Created and set local answer");
           
           socket.emit('webrtc-answer', {
             answer,
             to: from,
             roomId
           });
+          console.log("Sent WebRTC answer to:", from);
         } catch (error) {
           console.error("Error handling offer:", error);
         }
       });
 
       socket.on("webrtc-answer", async ({ answer, from }) => {
+        console.log("Received WebRTC answer from:", from);
         const pc = peerConnectionsRef.current[from];
         if (pc) {
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            console.log("Set remote description from answer");
           } catch (error) {
             console.error("Error setting remote description:", error);
           }
+        } else {
+          console.error("No peer connection found for:", from);
         }
       });
 
       socket.on("ice-candidate", async ({ candidate, from }) => {
+        console.log("Received ICE candidate from:", from);
         const pc = peerConnectionsRef.current[from];
         if (pc && candidate) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            console.log("Added ICE candidate from:", from);
           } catch (error) {
             console.error("Error adding ICE candidate:", error);
           }
@@ -535,7 +588,7 @@ export default function ModernChat() {
     );
   }, [messages, search]);
 
-  // FIXED: Improved send message function
+  // Send message function
   const handleSend = async () => {
     const text = messageInput.trim();
     if (!text || !currentUser) return;
@@ -592,7 +645,7 @@ export default function ModernChat() {
     }
   };
 
-  // FIXED: Improved typing handler
+  // Typing handler
   const handleInputChange = (e) => {
     setMessageInput(e.target.value);
 
@@ -652,7 +705,7 @@ export default function ModernChat() {
     cleanupMediaStreams();
   };
 
-  // Rest of your functions (startCall, acceptCall, etc.) remain the same...
+  // FIXED: Improved startCall function
   const startCall = async (type) => {
     const receiver = selectedUser || randomMatch;
     if (!receiver || !currentUser) {
@@ -665,6 +718,7 @@ export default function ModernChat() {
       setCallStatus("Starting call...");
       setCallDuration(0);
 
+      // Request media permissions first
       const constraints = {
         audio: {
           echoCancellation: true,
@@ -678,14 +732,19 @@ export default function ModernChat() {
         } : false
       };
 
+      console.log("Requesting media with constraints:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("Got media stream:", stream.getTracks());
+      
       localStreamRef.current = stream;
 
+      // Setup local video element
       if (localVideoRef.current) {
         try {
           localVideoRef.current.srcObject = stream;
           localVideoRef.current.muted = true;
           await localVideoRef.current.play();
+          console.log("Local video playing successfully");
         } catch (err) {
           console.warn("Could not autoplay local video:", err);
         }
@@ -700,11 +759,13 @@ export default function ModernChat() {
       setCallStatus("Calling...");
 
       if (socketRef.current) {
+        console.log("Emitting initiate-call to:", receiver._id);
         socketRef.current.emit('initiate-call', {
           to: receiver._id,
           from: currentUser._id,
           callType: type,
-          roomId
+          roomId,
+          caller: currentUser
         });
       }
 
@@ -725,6 +786,7 @@ export default function ModernChat() {
     }
   };
 
+  // FIXED: Improved acceptCall function
   const acceptCall = async () => {
     if (!incomingCall) return;
 
@@ -746,7 +808,10 @@ export default function ModernChat() {
         } : false
       };
 
+      console.log("Requesting media for incoming call:", constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("Got media stream for incoming call:", stream.getTracks());
+      
       localStreamRef.current = stream;
 
       if (localVideoRef.current) {
@@ -754,8 +819,9 @@ export default function ModernChat() {
           localVideoRef.current.srcObject = stream;
           localVideoRef.current.muted = true;
           await localVideoRef.current.play();
+          console.log("Local video playing for incoming call");
         } catch (err) {
-          console.warn("Could not autoplay local video:", err);
+          console.warn("Could not autoplay local video for incoming call:", err);
         }
       }
 
@@ -767,6 +833,7 @@ export default function ModernChat() {
       setCallStatus("Connecting...");
 
       if (socketRef.current) {
+        console.log("Emitting accept-call to:", incomingCall.caller._id);
         socketRef.current.emit('accept-call', {
           to: incomingCall.caller._id,
           from: currentUser._id,
@@ -891,9 +958,7 @@ export default function ModernChat() {
     }
   };
 
-  // ... (keep your existing render logic, it should work fine)
-
-  // The rest of your component rendering remains the same...
+  // Loading state
   if (loading) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white">
@@ -1115,26 +1180,25 @@ export default function ModernChat() {
                     </div>
                   </div>
 
-                  {/* Remote Videos */}
+                  {/* FIXED: Remote Videos with proper stream handling */}
                   {callParticipants.map(participant => (
                     <div key={participant._id} className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700 hover:border-cyan-500/50 transition-all shadow-2xl group">
                       {remoteVideosRef.current[participant._id] ? (
                         <video
                           ref={(el) => {
                             if (!el) return;
-                            const s = remoteVideosRef.current[participant._id];
-                            if (s && el.srcObject !== s) {
-                              try {
-                                el.srcObject = s;
-                                el.play().catch(() => {});
-                              } catch (err) {
-                                console.error('Error attaching remote stream to element', err);
-                              }
+                            const stream = remoteVideosRef.current[participant._id];
+                            if (stream && el.srcObject !== stream) {
+                              el.srcObject = stream;
+                              el.play().catch(err => console.warn('Could not play remote video:', err));
                             }
                           }}
                           autoPlay
                           playsInline
                           className="w-full h-full object-cover bg-slate-900"
+                          onLoadedMetadata={() => console.log('Remote video metadata loaded')}
+                          onCanPlay={() => console.log('Remote video can play')}
+                          onError={(e) => console.error('Remote video error:', e)}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
@@ -1143,7 +1207,7 @@ export default function ModernChat() {
                               {participant.username.substring(0, 2).toUpperCase()}
                             </div>
                             <p className="text-white font-semibold">{participant.username}</p>
-                            <p className="text-slate-400 text-sm mt-2">Connecting...</p>
+                            <p className="text-slate-400 text-sm mt-2">Connecting video...</p>
                           </div>
                         </div>
                       )}
@@ -1160,7 +1224,7 @@ export default function ModernChat() {
                     <div className="flex flex-col items-center justify-center text-center">
                       <div className="w-36 h-36 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold text-5xl mb-8 shadow-2xl">
                         {currentUser.username.substring(0, 2).toUpperCase()}
-                      </div>
+                      </div> 
                       <p className="text-2xl font-bold mb-3">You</p>
                       <div className="flex items-center justify-center space-x-3 bg-slate-800/50 rounded-xl px-4 py-2">
                         <div className={`w-2.5 h-2.5 rounded-full ${isMuted ? 'bg-red-500' : 'bg-emerald-400'}`}></div>
