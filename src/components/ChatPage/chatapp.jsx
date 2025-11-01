@@ -206,7 +206,7 @@ export default function ModernChat() {
     callRoomIdRef.current = null;
   }, []);
 
-  // FIXED: Improved createPeerConnection function
+  // FIXED: Improved createPeerConnection function with better stream handling
   const createPeerConnection = useCallback((userId) => {
     console.log(`Creating peer connection for: ${userId}`);
     
@@ -217,8 +217,8 @@ export default function ModernChat() {
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => {
           try {
+            console.log(`Adding ${track.kind} track to peer connection for ${userId}`);
             pc.addTrack(track, localStreamRef.current);
-            console.log(`Added ${track.kind} track to peer connection`);
           } catch (err) {
             console.warn('Error adding track to pc:', err);
           }
@@ -227,7 +227,6 @@ export default function ModernChat() {
 
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
-        console.log('ICE candidate generated:', event.candidate);
         if (event.candidate && socketRef.current) {
           socketRef.current.emit('ice-candidate', {
             candidate: event.candidate,
@@ -245,28 +244,15 @@ export default function ModernChat() {
           console.log('Remote stream set for user:', userId);
           
           // Force UI update
-          setCallParticipants(prev => {
-            const updated = [...prev];
-            setCallStatus("Connected");
-            return updated;
-          });
+          setCallParticipants(prev => [...prev]);
+          setCallStatus("Connected");
         }
       };
 
       pc.onconnectionstatechange = () => {
-        console.log(`Peer connection state changed to: ${pc.connectionState}`);
+        console.log(`Peer connection state for ${userId}: ${pc.connectionState}`);
         const status = pc.connectionState.charAt(0).toUpperCase() + pc.connectionState.slice(1);
         setCallStatus(status);
-        
-        if (pc.connectionState === 'connected') {
-          console.log('Peer connection established successfully');
-        } else if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          console.error('Peer connection failed');
-        }
-      };
-
-      pc.oniceconnectionstatechange = () => {
-        console.log(`ICE connection state: ${pc.iceConnectionState}`);
       };
 
       peerConnectionsRef.current[userId] = pc;
@@ -277,7 +263,7 @@ export default function ModernChat() {
     }
   }, []);
 
-  // FIXED: Improved socket initialization with better call handling
+  // FIXED: Improved socket initialization
   const initSocket = useCallback((token, user) => {
     if (socketRef.current) return;
     if (!token) return;
@@ -376,7 +362,6 @@ export default function ModernChat() {
         setSelectedUser(matchedUser);
         setMessages([]);
         
-        // Fetch previous messages with this user
         fetchMessagesForUser(matchedUser);
       });
 
@@ -408,7 +393,7 @@ export default function ModernChat() {
         setIsInRandomChat(false);
       });
 
-      // FIXED: Improved call event handlers
+      // Call events
       socket.on("incoming-call", async ({ from, callType: type, roomId, caller }) => {
         console.log("Incoming call from:", caller);
         const c = caller || { _id: from, username: "Random User" };
@@ -593,7 +578,6 @@ export default function ModernChat() {
     const text = messageInput.trim();
     if (!text || !currentUser) return;
 
-    // Determine the receiver
     const receiver = selectedUser || randomMatch;
     if (!receiver) {
       console.error("No receiver selected");
@@ -607,7 +591,6 @@ export default function ModernChat() {
       minute: "2-digit" 
     });
 
-    // Create temporary message
     const tempMessage = {
       id: tempId,
       sender: "me",
@@ -624,7 +607,6 @@ export default function ModernChat() {
     if (socketRef.current && socketRef.current.connected) {
       console.log("Sending message to:", receiver._id);
       
-      // Emit the message
       socketRef.current.emit('sendMessage', {
         senderId: currentUser._id,
         receiverId: receiver._id,
@@ -632,7 +614,6 @@ export default function ModernChat() {
         tempId
       });
 
-      // Stop typing indicator
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
@@ -654,16 +635,13 @@ export default function ModernChat() {
     const receiver = selectedUser || randomMatch;
     if (!receiver) return;
 
-    // Emit typing start
     socketRef.current.emit('typing', {
       senderId: currentUser._id,
       receiverId: receiver._id
     });
 
-    // Clear previous timeout
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
 
-    // Set new timeout to stop typing
     typingTimeoutRef.current = setTimeout(() => {
       if (socketRef.current) {
         socketRef.current.emit('stopTyping', {
@@ -705,7 +683,7 @@ export default function ModernChat() {
     cleanupMediaStreams();
   };
 
-  // FIXED: Improved startCall function
+  // FIXED: Improved startCall function with better local video setup
   const startCall = async (type) => {
     const receiver = selectedUser || randomMatch;
     if (!receiver || !currentUser) {
@@ -718,7 +696,6 @@ export default function ModernChat() {
       setCallStatus("Starting call...");
       setCallDuration(0);
 
-      // Request media permissions first
       const constraints = {
         audio: {
           echoCancellation: true,
@@ -738,17 +715,26 @@ export default function ModernChat() {
       
       localStreamRef.current = stream;
 
-      // Setup local video element
-      if (localVideoRef.current) {
-        try {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true;
-          await localVideoRef.current.play();
-          console.log("Local video playing successfully");
-        } catch (err) {
-          console.warn("Could not autoplay local video:", err);
+      // FIXED: Wait for the next render cycle to ensure video element is available
+      setTimeout(() => {
+        if (localVideoRef.current) {
+          try {
+            localVideoRef.current.srcObject = stream;
+            localVideoRef.current.muted = true;
+            localVideoRef.current.playsInline = true;
+            
+            const playPromise = localVideoRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(err => {
+                console.warn("Could not autoplay local video:", err);
+              });
+            }
+            console.log("Local video setup completed");
+          } catch (err) {
+            console.warn("Error setting up local video:", err);
+          }
         }
-      }
+      }, 100);
 
       const roomId = `call-${currentUser._id}-${Date.now()}`;
       callRoomIdRef.current = roomId;
@@ -814,16 +800,25 @@ export default function ModernChat() {
       
       localStreamRef.current = stream;
 
-      if (localVideoRef.current) {
-        try {
-          localVideoRef.current.srcObject = stream;
-          localVideoRef.current.muted = true;
-          await localVideoRef.current.play();
-          console.log("Local video playing for incoming call");
-        } catch (err) {
-          console.warn("Could not autoplay local video for incoming call:", err);
+      // FIXED: Wait for the next render cycle
+      setTimeout(() => {
+        if (localVideoRef.current) {
+          try {
+            localVideoRef.current.srcObject = stream;
+            localVideoRef.current.muted = true;
+            localVideoRef.current.playsInline = true;
+            
+            const playPromise = localVideoRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(err => {
+                console.warn("Could not autoplay local video for incoming call:", err);
+              });
+            }
+          } catch (err) {
+            console.warn("Error setting up local video for incoming call:", err);
+          }
         }
-      }
+      }, 100);
 
       callRoomIdRef.current = incomingCall.roomId;
 
@@ -901,6 +896,7 @@ export default function ModernChat() {
     }
   };
 
+  // FIXED: Improved toggleVideo function
   const toggleVideo = () => {
     if (localStreamRef.current) {
       const videoTracks = localStreamRef.current.getVideoTracks();
@@ -908,6 +904,7 @@ export default function ModernChat() {
         const newState = !videoTracks[0].enabled;
         videoTracks.forEach(t => t.enabled = newState);
         setIsVideoOff(!newState);
+        console.log(`Video ${newState ? 'enabled' : 'disabled'}`);
       }
     }
   };
@@ -1149,12 +1146,12 @@ export default function ModernChat() {
             </div>
           </div>
 
-          {/* Main Video Content */}
+          {/* Main Video Content - FIXED: Better video layout */}
           <div className="flex-1 flex gap-6 p-6 overflow-hidden">
             <div className="flex-1">
               {callType === 'video' ? (
                 <div className="h-full grid grid-cols-1 md:grid-cols-2 gap-6 auto-rows-fr">
-                  {/* Local Video */}
+                  {/* Local Video - FIXED: Ensure proper display */}
                   <div className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl overflow-hidden border-2 border-cyan-500/50 shadow-2xl">
                     {isVideoOff ? (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
@@ -1172,6 +1169,7 @@ export default function ModernChat() {
                         muted
                         playsInline
                         className="w-full h-full object-cover bg-slate-900"
+                        style={{ transform: 'scaleX(-1)' }} // Mirror effect for self-view
                       />
                     )}
                     <div className="absolute bottom-4 left-4 bg-black/80 px-4 py-2 rounded-full text-sm backdrop-blur-md border border-slate-700/50 shadow-lg">
@@ -1180,7 +1178,7 @@ export default function ModernChat() {
                     </div>
                   </div>
 
-                  {/* FIXED: Remote Videos with proper stream handling */}
+                  {/* Remote Videos */}
                   {callParticipants.map(participant => (
                     <div key={participant._id} className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl overflow-hidden border-2 border-slate-700 hover:border-cyan-500/50 transition-all shadow-2xl group">
                       {remoteVideosRef.current[participant._id] ? (
@@ -1196,9 +1194,6 @@ export default function ModernChat() {
                           autoPlay
                           playsInline
                           className="w-full h-full object-cover bg-slate-900"
-                          onLoadedMetadata={() => console.log('Remote video metadata loaded')}
-                          onCanPlay={() => console.log('Remote video can play')}
-                          onError={(e) => console.error('Remote video error:', e)}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-800 to-slate-900">
@@ -1244,7 +1239,7 @@ export default function ModernChat() {
                           <p className="text-slate-300">Connected</p>
                         </div>
 
-                        {/* Hidden/visible element to play audio if remote stream is present */}
+                        {/* Hidden audio element */}
                         {remoteVideosRef.current[participant._id] && (
                           <audio
                             ref={(el) => {
