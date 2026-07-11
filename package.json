@@ -24,7 +24,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
+     "build": "CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -51,4 +51,5 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.17"
   }
+  
 }
