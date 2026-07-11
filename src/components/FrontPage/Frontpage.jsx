@@ -242,8 +242,7 @@ const Frontpage = () => {
              <div className="flex flex-col sm:flex-row gap-4 relative z-50">
   <button 
     onClick={() => handleNavigation('/chatwithoutlogin')}
-    className="inline-flex items-center justify-center px-6 py-3 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25 w-fit z-50"
-  >
+className="flex items-center justify-center px-6 py-3 text-sm font-semibold text-slate-900  transition-all duration-200 hover:scale-105 hover:shadow-xl z-50 text-white bg-gradient-to-r from-blue-500 to-purple-500 rounded-full hover:from-blue-600 hover:to-purple-600 transition-all duration-200 hover:scale-105 hover:shadow-xl hover:shadow-blue-500/25"  >
     <MessageCircle className="w-4 h-4 mr-2" />
     Chat Without Login
   </button>
